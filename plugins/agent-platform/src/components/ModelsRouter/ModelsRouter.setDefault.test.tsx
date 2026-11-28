@@ -113,7 +113,6 @@ jest.mock('../../hooks/useDeleteModelConfig', () => ({
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 
 const MARK = 'agent-platform.giantswarm.io/is-default-model-config';
@@ -227,7 +226,7 @@ describe('ModelsRouter · Set as default on an organization model', () => {
     await waitFor(() =>
       expect(toolCalls(callTool, 'set_organization_model')).toEqual([
         {
-          namespace: PAYMENTS.namespace,
+          organization: PAYMENTS.organization,
           name: 'claude-sonnet',
           default: true,
           requestId: expect.any(String),

@@ -24,8 +24,9 @@ const useStyles = makeStyles({
 });
 
 /**
- * Pending erase: the organization's delete pull request merged (Orphaned,
- * reason DeleteMerged) and it is not being erased yet. Its files are gone from
+ * Pending erase: the organization's delete pull request merged
+ * (AgentPlatformOrphaned, reason DeleteMerged, which agent-manager answers as
+ * `orphaned`) and it is not being erased yet. Its files are gone from
  * git, so nothing on its page is changed any more: the page offers reading and
  * Erase now only.
  */

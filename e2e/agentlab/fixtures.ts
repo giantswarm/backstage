@@ -903,7 +903,7 @@ export async function createAgentInWizard(
   ).toBeVisible({ timeout: 60_000 });
   if (await noOrganization.isVisible()) {
     throw new Error(
-      `${await noOrganization.innerText()}: the wizard offers no place to create the agent in: no AgentPlatformOrganization of the lab binds the user (agent-manager's list_my_organizations)`,
+      `${await noOrganization.innerText()}: the wizard offers no place to create the agent in: no organization of the lab binds the user (agent-manager's list_organizations)`,
     );
   }
   if (await owner.isVisible()) {

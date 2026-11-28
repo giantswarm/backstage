@@ -1,5 +1,6 @@
+import { useCallback, useEffect, useState } from 'react';
 import { useRouteRef } from '@backstage/frontend-plugin-api';
-import { Alert, Flex, Link, List, ListRow, Text } from '@backstage/ui';
+import { Alert, Button, Flex, Link, List, ListRow, Text } from '@backstage/ui';
 import {
   countNoun,
   EmptyStateCard,
@@ -11,8 +12,11 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 // eslint-disable-next-line @backstage/no-mixed-plugin-imports -- muster names the connector.
 import { useConnectorLabel } from '@giantswarm/backstage-plugin-muster';
+import { useSelfSubjectAccessReview } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { AGENT_MANAGER_SERVER } from '../../lib/agentManager';
+import { isOrganizationReady } from '../../lib/organizations';
+import { CreateOrganizationDialog } from '../CreateOrganizationDialog';
 import { organizationDetailRouteRef } from '../../routes';
 import {
   useOrganizationDirectory,
@@ -77,6 +81,17 @@ export function OrganizationsIndexPage() {
   const detailRoute = useRouteRef(organizationDetailRouteRef);
   const isPhone = usePhoneLayout();
   const frame = { documentTitle: 'Organizations' };
+  const [creatable, setCreatable] = useState<Record<string, boolean>>({});
+  const [creating, setCreating] = useState(false);
+  const onCreateAccess = useCallback(
+    (installation: string, allowed: boolean) =>
+      setCreatable(current =>
+        current[installation] === allowed
+          ? current
+          : { ...current, [installation]: allowed },
+      ),
+    [],
+  );
 
   // The installations whose check failed sit behind one quiet line, under
   // what could be read: an installation the person never uses must not
@@ -108,9 +123,34 @@ export function OrganizationsIndexPage() {
   const none = answered
     .map(installation => organizationsOf(installation)?.none)
     .find(Boolean);
+  // Where the person may create an `Organization`: only an installation
+  // whose organizations could be read is offered.
+  const createOn = answered.filter(installation => creatable[installation]);
 
   return (
-    <ShellPage title="Organizations" {...frame}>
+    <ShellPage
+      title="Organizations"
+      {...frame}
+      actions={
+        createOn.length > 0 ? (
+          <Button variant="primary" onPress={() => setCreating(true)}>
+            Create organization
+          </Button>
+        ) : undefined
+      }
+    >
+      {answered.map(installation => (
+        <CreateAccessProbe
+          key={installation}
+          installation={installation}
+          onAnswer={onCreateAccess}
+        />
+      ))}
+      <CreateOrganizationDialog
+        installations={createOn}
+        isOpen={creating && createOn.length > 0}
+        onOpenChange={setCreating}
+      />
       {/* One tree for every state: the disclosure keeps whether it is open
           as installations answer. */}
       <Flex direction="column" gap="5">
@@ -171,10 +211,9 @@ export function OrganizationsIndexPage() {
             <PageSection key={installation} title={installation}>
               <List aria-label={`Your organizations on ${installation}`}>
                 {answer.organizations.map(organization => {
-                  const id = `${organization.parent}/${organization.name}`;
+                  const id = organization.name;
                   const href = detailRoute?.({
                     installation,
-                    parent: organization.parent,
                     name: organization.name,
                   });
                   const label = organization.displayName || organization.name;
@@ -185,8 +224,11 @@ export function OrganizationsIndexPage() {
                       href={href}
                       textValue={label}
                       description={[
-                        organization.parent,
                         organization.namespace,
+                        !organization.deleting &&
+                        !isOrganizationReady(organization)
+                          ? 'not ready yet'
+                          : undefined,
                         organization.permissions.manage
                           ? 'you manage it'
                           : undefined,
@@ -278,4 +320,28 @@ function NoneCheckedAlert({
       }
     />
   );
+}
+
+/**
+ * Asks, as the person, whether they may create an `Organization` on one
+ * installation (`create`, cluster-wide: what `create_organization` checks
+ * first), and passes the answer up: the page offers Create organization
+ * only where it is yes. agent-manager still decides the create.
+ */
+function CreateAccessProbe({
+  installation,
+  onAnswer,
+}: {
+  installation: string;
+  onAnswer: (installation: string, allowed: boolean) => void;
+}) {
+  const { allowed } = useSelfSubjectAccessReview(installation, {
+    group: 'security.giantswarm.io',
+    resource: 'organizations',
+    verb: 'create',
+  });
+  useEffect(() => {
+    onAnswer(installation, allowed);
+  }, [installation, allowed, onAnswer]);
+  return null;
 }

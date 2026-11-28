@@ -17,10 +17,10 @@ import {
 // Organization's namespace that no answer names, so it is no Agent Platform
 // organization, only named as the Giant Swarm one.
 const directory = organizationDirectory([
-  { namespace: 'agents-acme-x7k2q', organization: 'acme', parent: 'org-acme' },
-  { namespace: 'agents-beta-p3m9z', organization: 'beta', parent: 'org-acme' },
-  { namespace: 'agents-none-a1b2c', organization: 'none', parent: 'org-x' },
-  { namespace: 'agents-pf-d4e5f', organization: 'platform', parent: 'org-x' },
+  { namespace: 'agents-acme-x7k2q', organization: 'acme' },
+  { namespace: 'agents-beta-p3m9z', organization: 'beta' },
+  { namespace: 'agents-none-a1b2c', organization: 'none' },
+  { namespace: 'agents-pf-d4e5f', organization: 'platform' },
 ]);
 
 describe('creatorOf', () => {
@@ -124,13 +124,11 @@ describe('ownerDisplayOf', () => {
     {
       namespace: 'agents-default-x7k2q',
       organization: 'default',
-      parent: 'org-gs',
       displayName: 'Lab',
     },
     {
       namespace: 'agents-acme-x7k2q',
       organization: 'acme',
-      parent: 'org-acme',
     },
   ]);
 

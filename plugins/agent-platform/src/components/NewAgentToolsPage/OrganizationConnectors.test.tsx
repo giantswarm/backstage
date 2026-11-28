@@ -123,9 +123,10 @@ const CURATED_NO_CREDENTIAL: OrganizationConnector = {
 };
 
 const OTTER_CONNECTORS = [READY, NO_CREDENTIAL, UNCHECKED, MUSTER_BINDING];
+/** By organization name, as `list_organization_connectors` takes it. */
 const CONNECTORS: Record<string, OrganizationConnector[]> = {
-  'org-otter': OTTER_CONNECTORS,
-  'org-acme': [ACME_ONLY, CURATED_NO_CREDENTIAL],
+  otter: OTTER_CONNECTORS,
+  acme: [ACME_ONLY, CURATED_NO_CREDENTIAL],
 };
 
 /** agent-manager through muster, `create_agent` taking `connectors` or not. */
@@ -133,7 +134,7 @@ function musterApi(takesConnectors = true) {
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
       if (name === 'x_agent-manager_list_organization_connectors') {
-        return { connectors: CONNECTORS[args.namespace as string] ?? [] };
+        return { connectors: CONNECTORS[args.organization as string] ?? [] };
       }
       throw new Error(`unexpected tool ${name}`);
     },
@@ -234,7 +235,7 @@ const picked = () => screen.getByTestId('connectors').textContent;
 describe('OrganizationConnectors', () => {
   afterEach(() => {
     mockAgentManagerVersion = undefined;
-    CONNECTORS['org-otter'] = OTTER_CONNECTORS;
+    CONNECTORS.otter = OTTER_CONNECTORS;
   });
 
   it.each([
@@ -254,7 +255,7 @@ describe('OrganizationConnectors', () => {
     "offers a connector another chart renders, never an agent's muster binding, with agent-manager $agentManager",
     async ({ version, binding, offered }) => {
       mockAgentManagerVersion = version;
-      CONNECTORS['org-otter'] = [READY, binding, OTHER_CHART];
+      CONNECTORS.otter = [READY, binding, OTHER_CHART];
       await renderSection();
 
       await screen.findByRole('checkbox', { name: 'jira' });
@@ -275,10 +276,10 @@ describe('OrganizationConnectors', () => {
     expect(
       within(section()).getByText(/the same for everybody who uses the agent/),
     ).toBeInTheDocument();
-    // Read as the person, for the chosen organization's namespace only.
+    // Read as the person, for the chosen organization only, by its name.
     expect(callTool).toHaveBeenCalledWith(
       'x_agent-manager_list_organization_connectors',
-      { namespace: 'org-otter' },
+      { organization: 'otter' },
       'gazelle',
     );
     expect(screen.queryByRole('checkbox', { name: 'acme-tracker' })).toBeNull();
@@ -322,10 +323,7 @@ describe('OrganizationConnectors', () => {
       within(section()).getByRole('link', {
         name: /Open the Connectors tab/,
       }),
-    ).toHaveAttribute(
-      'href',
-      '/organizations/gazelle/org-parent/otter/connectors',
-    );
+    ).toHaveAttribute('href', '/organizations/gazelle/otter/connectors');
     expect(
       screen.getByRole('checkbox', { name: 'jira' }),
     ).toHaveAccessibleDescription('Ready to use.');
@@ -367,10 +365,7 @@ describe('OrganizationConnectors', () => {
       within(section()).getByRole('link', {
         name: /See the organization's connectors/,
       }),
-    ).toHaveAttribute(
-      'href',
-      '/organizations/gazelle/org-parent/alpha/connectors',
-    );
+    ).toHaveAttribute('href', '/organizations/gazelle/alpha/connectors');
     expect(within(section()).queryByText(/Add one/)).toBeNull();
   });
 

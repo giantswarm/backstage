@@ -5,8 +5,8 @@
  * platform tenant, the platform's agents for everyone, and an organization
  * namespace is that organization's tenant. Which namespace is which
  * organization comes only from agent-manager's answers, which read the
- * namespace's `agent-platform.giantswarm.io/organization` and `/parent`
- * labels (an {@link OrganizationDirectory}); a namespace's name is never
+ * organization namespace its `Organization` reports (an
+ * {@link OrganizationDirectory}); a namespace's name is never
  * parsed to decide that (giantswarm/giantswarm#38891), only to name a Giant
  * Swarm organization's `org-<name>` namespace by the organization under
  * "Organization" and in a sentence (`tenantOf`, `tenantInSentence`).

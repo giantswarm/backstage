@@ -1,4 +1,5 @@
 import { identityApiRef } from '@backstage/frontend-plugin-api';
+import { kubernetesApiRef } from '@backstage/plugin-kubernetes-react';
 import { renderInTestApp } from '@backstage/frontend-test-utils';
 import { TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -22,6 +23,7 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import {
+  fakeOrganizationAccess,
   fakeOrganizationsMuster,
   type OrganizationsScenario,
 } from '../../lib/__fixtures__/agentManagerOrganizations';
@@ -151,7 +153,6 @@ const PAYMENTS = {
       {
         namespace: 'agents-payments-x7k2q',
         organization: 'payments',
-        parent: 'org-acme',
       },
     ],
   },
@@ -172,6 +173,7 @@ async function renderList(
     <TestApiProvider
       apis={[
         [musterApiRef, api],
+        [kubernetesApiRef, fakeOrganizationAccess(scenario.access)],
         [externalUrlConsentApiRef, new ExternalUrlConsentManager(jest.fn())],
         [identityApiRef, { signOut } as unknown as typeof identityApiRef.T],
         ...(environments
@@ -467,7 +469,6 @@ describe('OrganizationsIndexPage', () => {
           {
             namespace: 'agents-payments-x7k2q',
             organization: 'payments',
-            parent: 'org-acme',
           },
         ],
       },
@@ -476,12 +477,42 @@ describe('OrganizationsIndexPage', () => {
     // A bui list row is the link: it carries its target as `data-href`.
     expect(
       await screen.findByRole('row', { name: /payments/ }),
-    ).toHaveAttribute('data-href', '/organizations/gazelle/org-acme/payments');
+    ).toHaveAttribute('data-href', '/organizations/gazelle/payments');
     // The name is a link a person can see, to the same page.
     expect(screen.getByRole('link', { name: 'payments' })).toHaveAttribute(
       'href',
-      '/organizations/gazelle/org-acme/payments',
+      '/organizations/gazelle/payments',
     );
+  });
+
+  it('marks an organization the operator has not reported ready', async () => {
+    await renderList({
+      mine: { organizations: [] },
+      organization: {
+        name: 'payments',
+        harnesses: [],
+        workerReplicas: 1,
+        ready: { status: 'False', reason: 'NamespacePending' },
+      },
+    });
+
+    expect(
+      await screen.findByRole('row', { name: /payments/ }),
+    ).toHaveTextContent(/not ready yet/);
+  });
+
+  it('offers Create organization only where the person may create an Organization', async () => {
+    await renderList({
+      mine: { organizations: [] },
+      access: { organizations: false },
+    });
+
+    expect(
+      await screen.findByText('You belong to no organization'),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByRole('button', { name: 'Create organization' }),
+    ).not.toBeInTheDocument();
   });
 
   it('tells a person in no organization who can add them, in agent-manager’s words', async () => {

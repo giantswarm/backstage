@@ -305,24 +305,24 @@ describe('getTelemetryPageViewPayload', () => {
     ['/profile/whatever', { page: 'Profile' }, '/profile/*'],
     ['/organizations', { page: 'Organizations' }, '/organizations'],
     [
-      '/organizations/acme-prod/org-acme/payments',
+      '/organizations/acme-prod/payments',
       { page: 'Organization detail' },
-      '/organizations/:installation/:parent/:name',
+      '/organizations/:installation/:name',
     ],
     [
-      '/organizations/acme-prod/org-acme/payments/models',
+      '/organizations/acme-prod/payments/models',
       { page: 'Organization detail', view: 'models' },
-      '/organizations/:installation/:parent/:name/models',
+      '/organizations/:installation/:name/models',
     ],
     [
-      `/organizations/acme-prod/org-acme/payments/credentials/${'a1'.repeat(24)}`,
+      `/organizations/acme-prod/payments/credentials/${'a1'.repeat(24)}`,
       { page: 'Organization credential form' },
-      '/organizations/:installation/:parent/:name/credentials/:operation',
+      '/organizations/:installation/:name/credentials/:operation',
     ],
     [
-      '/organizations/acme-prod/org-acme/payments/whatever',
+      '/organizations/acme-prod/payments/whatever',
       { page: 'Organization detail', view: 'redirect' },
-      '/organizations/:installation/:parent/:name/*',
+      '/organizations/:installation/:name/*',
     ],
     [
       '/organizations/acme-prod',
@@ -995,7 +995,7 @@ describe('getTelemetryPageViewPayload', () => {
       '/usage/connectors',
       '/profile',
       '/organizations',
-      '/organizations/acme-prod/org-acme/payments/egress',
+      '/organizations/acme-prod/payments/egress',
       // The old tree, redirect-only until the end of 2026.
       '/agent-platform',
       '/agent-platform/agents/gazelle/agent-platform/pr-reviewer',

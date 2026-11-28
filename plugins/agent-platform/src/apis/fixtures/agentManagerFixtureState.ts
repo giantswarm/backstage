@@ -6,7 +6,6 @@ import {
   inInstallation,
   type AgentState,
   type FixtureDataSet,
-  type FixtureOrganization,
 } from '@giantswarm/backstage-plugin-gs-common/fixtures';
 import {
   ModelConfig,
@@ -22,8 +21,10 @@ import type {
   AgentStatus,
   AgentStatusVerdict,
   AgentUpdate,
+  CommitAgentResult,
   CreateAgentResult,
   DeleteAgentResult,
+  GitOpsCommit,
   StartSessionRequest,
   StartSessionResult,
   UpdateAgentResult,
@@ -38,10 +39,12 @@ import type {
 } from '../../lib/credentialOperations';
 import {
   FIRST_ADMINS_BINDING,
+  adminsOf,
   type MemberRequest,
   type MemberResult,
   type MemberRole,
   type OrganizationAgentSessions,
+  type OrganizationCommit,
   type OrganizationConnector,
   type OrganizationCredentialReplacement,
   type OrganizationDeleteResult,
@@ -51,6 +54,11 @@ import {
   type OrganizationMember,
   type OrganizationModelRequest,
   type ListedOrganization,
+  type OrganizationAdminsUpdate,
+  type OrganizationCreateRequest,
+  type OrganizationCreateResult,
+  type OrganizationSubject,
+  type OrganizationUpdateResult,
 } from '../../lib/organizations';
 import {
   FIXTURE_HARNESS,
@@ -59,6 +67,7 @@ import {
   agentManagerAgentOf,
   agentObjectOf,
   carrierObjectOf,
+  fixtureAdminsOf,
   harnessObjectOf,
   isVertexProvider,
   listedOrganizationOf,
@@ -68,6 +77,7 @@ import {
   providerBlockOf,
   type FixtureAgentRecord,
   type FixtureModel,
+  type FixtureOrganizationState,
 } from './agentPlatformFixtureData';
 import { MODEL_CONFIG_NAMESPACE } from '../../lib/modelConfigs';
 import { DEFAULT_CACHE_TTL, providerSettings } from '../../lib/modelSettings';
@@ -118,6 +128,36 @@ export const HELM_PLATFORM_MODEL = 'platform-default';
 export const INCOMPLETE_MODEL_INSTALLATION = 'tarragon';
 export const INCOMPLETE_MODEL = 'claude-direct';
 
+/**
+ * The installation whose agent-manager reports the `commit` capability and
+ * answers `create_organization`, `create_agent`, `update_agent` and
+ * `delete_agent` in mode commit with a pull request (and `validate_agent`
+ * with a validation), so the Create organization dialog and the New agent
+ * review offer the choice there. It must be an installation the data set
+ * keeps reachable. Nothing live comes of it:
+ * the pull request is never merged. Every other write in mode commit is
+ * refused, there too.
+ */
+export const ORGANIZATION_PULL_REQUEST_INSTALLATION = 'fennel';
+
+/** The pull request a create of `name` in mode commit opens. */
+export function organizationCreatePullRequest(
+  name: string,
+): OrganizationCommit {
+  return {
+    repository: 'example/fennel-configs',
+    base: 'main',
+    branch: `agent-manager/create-${name}_f1x7`,
+    pullRequest: 'https://github.com/example/fennel-configs/pull/41',
+    number: 41,
+    review:
+      "the platform team reviews it: the repository's CODEOWNERS names them for the organization paths, and an organization's admin cannot approve it alone",
+    liveSteps: [
+      'after the merge Flux applies the object; agent-platform-operator creates the organization namespace and binds spec.admins to agent-platform:admin there',
+    ],
+  };
+}
+
 /** The Secrets agent-manager owns, and writes, in the installation namespace. */
 const PLATFORM_CREDENTIAL_PREFIX = 'tenant-credential-';
 
@@ -128,6 +168,14 @@ const GOOGLE_PROJECT_ID = /^[a-z][a-z0-9-]{4,28}[a-z0-9]$/;
 const GOOGLE_SERVICE_ACCOUNT_JSON = 'google-service-account-json' as const;
 
 const DAY = 24 * 60 * 60 * 1000;
+
+/**
+ * A member tool's request as the state takes it: the organization's
+ * namespace, which the fixture server finds from the organization's name.
+ */
+export type FixtureMemberRequest = Omit<MemberRequest, 'organization'> & {
+  namespace: string;
+};
 
 /** The error of a refusal, in agent-manager's words: `<code>: <message>`. */
 export function refusal(code: string, message: string): Error {
@@ -173,13 +221,22 @@ type StoredOperation = {
 };
 
 type InstallationState = {
-  organizations: FixtureOrganization[];
+  organizations: FixtureOrganizationState[];
   agents: Map<string, StoredAgent>;
   models: Map<string, FixtureModel>;
   members: Map<string, OrganizationMember[]>;
-  /** When the erase of an organization started, by `parent/name`. */
+  /** When the erase of an organization started, by its name. */
   erasing: Map<string, number>;
+  /** When an organization created here was written, by its name. */
+  creating: Map<string, number>;
 };
+
+/**
+ * Where an admin comes from, in agent-manager's words
+ * (`list_organization_members`' `from`).
+ */
+export const ADMINS_FROM =
+  "the Organization's spec.admins, which agent-platform-operator binds to agent-platform:admin; update_organization (adminGroups, adminUsers) changes them";
 
 /** `get_agent_status`'s verdict on an agent the release rendered. */
 const VERDICT_OF: Record<AgentState, AgentStatusVerdict> = {
@@ -231,20 +288,41 @@ function groupsFirst(members: OrganizationMember[]): OrganizationMember[] {
   ];
 }
 
-/** The members an organization starts with: two groups and the person. */
-function membersOf(organization: FixtureOrganization): OrganizationMember[] {
+/**
+ * The admins' members: the operator binds the `Organization`'s
+ * `spec.admins` to the admin role in `organization-admins`.
+ */
+function adminMembersOf(
+  admins: readonly OrganizationSubject[],
+): OrganizationMember[] {
+  return admins.map(admin => ({
+    kind: admin.kind,
+    name: admin.name,
+    role: 'admin',
+    binding: FIRST_ADMINS_BINDING,
+    from: ADMINS_FROM,
+  }));
+}
+
+/**
+ * The members an organization starts with: its admins, a group of
+ * developers and the person in their role.
+ */
+function membersOf(
+  organization: FixtureOrganizationState,
+): OrganizationMember[] {
   const member = (
     kind: string,
     name: string,
     role: MemberRole,
   ): OrganizationMember => ({ kind, name, role, binding: bindingOf(role) });
-  return [
-    member('Group', `${organization.name}-admins`, 'admin'),
+  return groupsFirst([
+    ...adminMembersOf(organization.admins ?? fixtureAdminsOf(organization)),
     member('Group', `${organization.name}-developers`, 'editor'),
-    ...(organization.role === 'none'
+    ...(organization.role === 'none' || organization.role === 'admin'
       ? []
       : [member('User', FIXTURE_USER.email, organization.role)]),
-  ];
+  ]);
 }
 
 /**
@@ -346,14 +424,62 @@ function nameTaken(agent: FixtureAgentRecord): string {
   return `a HelmRelease named ${agent.name} already exists in namespace ${agent.namespace}`;
 }
 
-/** A write in mode `commit`: this agent-manager writes live only. */
-function mustBeLive(mode: unknown): void {
-  if (mode === 'commit') {
+/**
+ * Whether a write of an agent in `mode` opens a pull request rather than
+ * writing live: in mode `commit`, where agent-manager reports the `commit`
+ * capability. Elsewhere mode `commit` is refused.
+ */
+function commitsAgent(mode: unknown, installation: string): boolean {
+  if (mode !== 'commit') {
+    return false;
+  }
+  if (installation !== ORGANIZATION_PULL_REQUEST_INSTALLATION) {
     throw refusal(
       'unsupported',
       'this agent-manager writes live only: it has no commit capability',
     );
   }
+  return true;
+}
+
+/**
+ * The pull request a write of `agent` in mode commit opens: its HelmRelease
+ * file written or removed. A dry run opens none and carries the file's
+ * content instead. It is never merged, so the agent stays as it is.
+ */
+function agentCommit(
+  action: 'create' | 'update' | 'delete',
+  agent: FixtureAgentRecord,
+  dryRun: boolean,
+): CommitAgentResult {
+  const directory = `flux/agent-manager/${agent.namespace}`;
+  return {
+    mode: 'commit',
+    dryRun,
+    commit: {
+      repository: 'example/fennel-configs',
+      base: 'main',
+      directory,
+      kustomization: 'flux-giantswarm/agents',
+      prune: true,
+      branch: `agent-manager/${action}-${agent.name}_f1x7`,
+      files: [
+        {
+          path: `${directory}/${agent.name}.yaml`,
+          action,
+          ...(dryRun &&
+            action !== 'delete' && {
+              content: manifestsOf(agent).helmRelease,
+            }),
+        },
+      ],
+      ...(!dryRun && {
+        pullRequest: 'https://github.com/example/fennel-configs/pull/42',
+        number: 42,
+        author: FIXTURE_USER.email,
+      }),
+    } satisfies GitOpsCommit,
+  };
 }
 
 export class AgentManagerFixtureState {
@@ -470,10 +596,18 @@ export class AgentManagerFixtureState {
         key: keyNameOf('OpenAI'),
         helmRelease: 'kagent',
       });
-      state = { organizations, agents, models, members, erasing: new Map() };
+      state = {
+        organizations,
+        agents,
+        models,
+        members,
+        erasing: new Map(),
+        creating: new Map(),
+      };
       this.installations.set(installation, state);
     }
     this.finishErasures(state);
+    this.finishCreates(state);
     return state;
   }
 
@@ -503,8 +637,36 @@ export class AgentManagerFixtureState {
 
   // Organizations
 
-  private erasureKey(organization: FixtureOrganization): string {
-    return `${organization.parent}/${organization.name}`;
+  private erasureKey(organization: FixtureOrganizationState): string {
+    return organization.name;
+  }
+
+  /**
+   * Gives an organization created here its namespace and members once the
+   * operator would have reported it ready: {@link SETTLE_MS} after the
+   * create.
+   */
+  private finishCreates(state: InstallationState): void {
+    let done = false;
+    for (const [name, since] of state.creating) {
+      if (this.now() - since < SETTLE_MS) {
+        continue;
+      }
+      state.creating.delete(name);
+      const organization = state.organizations.find(
+        candidate => candidate.name === name,
+      );
+      if (!organization) {
+        continue;
+      }
+      organization.namespace = `agents-${name}`;
+      organization.state = 'ready';
+      state.members.set(organization.namespace, membersOf(organization));
+      done = true;
+    }
+    if (done) {
+      this.changed();
+    }
   }
 
   /** Drops the organizations whose erase went through its last step. */
@@ -540,7 +702,7 @@ export class AgentManagerFixtureState {
   /** An organization as agent-manager lists it, on its erase's current step. */
   private listed(
     installation: string,
-    organization: FixtureOrganization,
+    organization: FixtureOrganizationState,
   ): ListedOrganization {
     const listed = listedOrganizationOf(organization);
     const since = this.stateOf(installation).erasing.get(
@@ -559,7 +721,7 @@ export class AgentManagerFixtureState {
   private organizationIn(
     installation: string,
     namespace: string,
-  ): FixtureOrganization {
+  ): FixtureOrganizationState {
     const organization = this.stateOf(installation).organizations.find(
       candidate => candidate.namespace === namespace,
     );
@@ -576,7 +738,7 @@ export class AgentManagerFixtureState {
   private writableIn(
     installation: string,
     namespace: string,
-  ): FixtureOrganization {
+  ): FixtureOrganizationState {
     const organization = this.organizationIn(installation, namespace);
     if (organization.state === 'deleting') {
       throw refusal(
@@ -589,22 +751,18 @@ export class AgentManagerFixtureState {
 
   private organizationNamed(
     installation: string,
-    parent: string,
     name: string,
-  ): FixtureOrganization {
+  ): FixtureOrganizationState {
     const organization = this.stateOf(installation).organizations.find(
-      candidate => candidate.parent === parent && candidate.name === name,
+      candidate => candidate.name === name,
     );
     if (!organization) {
-      throw refusal(
-        'not_found',
-        `AgentPlatformOrganization ${parent}/${name} not found`,
-      );
+      throw refusal('not_found', `Organization ${name} not found`);
     }
     return organization;
   }
 
-  private mustManage(organization: FixtureOrganization): void {
+  private mustManage(organization: FixtureOrganizationState): void {
     if (!permissionsOf(organization.role).manage) {
       throw refusal(
         'forbidden',
@@ -613,7 +771,7 @@ export class AgentManagerFixtureState {
     }
   }
 
-  private mustCreateAgentsIn(organization: FixtureOrganization): void {
+  private mustCreateAgentsIn(organization: FixtureOrganizationState): void {
     if (!permissionsOf(organization.role).createAgents) {
       throw refusal(
         'forbidden',
@@ -630,9 +788,44 @@ export class AgentManagerFixtureState {
     };
   }
 
+  /**
+   * The namespace of the organization `name`, as agent-manager finds it for
+   * every tool that takes an organization by its name: refused, nothing
+   * written, while the organization does not exist or the operator has not
+   * reported its namespace.
+   */
+  organizationNamespace(installation: string, name: string): string {
+    const organization = this.stateOf(installation).organizations.find(
+      candidate => candidate.name === name,
+    );
+    if (!organization) {
+      throw refusal(
+        'not_found',
+        `organization ${name} not found; list_organizations lists yours`,
+      );
+    }
+    if (!organization.namespace) {
+      throw refusal(
+        'conflict',
+        `organization ${name} is not ready yet: agent-platform-operator has not reported its namespace (the agentPlatform entry of status.namespaces); nothing was written, try again shortly`,
+      );
+    }
+    return organization.namespace;
+  }
+
+  /** The name of the organization whose namespace `namespace` is, if any. */
+  organizationOfNamespace(
+    installation: string,
+    namespace: string,
+  ): string | undefined {
+    return this.stateOf(installation).organizations.find(
+      candidate => candidate.namespace === namespace,
+    )?.name;
+  }
+
   private erasureOf(
     installation: string,
-    organization: FixtureOrganization,
+    organization: FixtureOrganizationState,
   ): OrganizationErasure | undefined {
     const { namespace } = organization;
     if (!namespace) {
@@ -666,7 +859,8 @@ export class AgentManagerFixtureState {
         ),
       ],
       sessions: this.sessionsOf(installation, namespace),
-      kept: `The parent namespace ${organization.parent} and the organization's history in git.`,
+      organizationNamespace: `org-${organization.name}`,
+      kept: "The organization's history in git, and the session tombstones.",
     };
   }
 
@@ -692,12 +886,8 @@ export class AgentManagerFixtureState {
     return [...counts.values()];
   }
 
-  getOrganization(
-    installation: string,
-    parent: string,
-    name: string,
-  ): OrganizationDetails {
-    const organization = this.organizationNamed(installation, parent, name);
+  getOrganization(installation: string, name: string): OrganizationDetails {
+    const organization = this.organizationNamed(installation, name);
     this.mustManage(organization);
     const { organization: details } = this.listed(installation, organization);
     const erases = this.erasureOf(installation, organization);
@@ -706,13 +896,9 @@ export class AgentManagerFixtureState {
 
   deleteOrganization(
     installation: string,
-    request: { parent: string; name: string; confirm?: string },
+    request: { name: string; confirm?: string },
   ): OrganizationDeleteResult {
-    const organization = this.organizationNamed(
-      installation,
-      request.parent,
-      request.name,
-    );
+    const organization = this.organizationNamed(installation, request.name);
     this.mustManage(organization);
     const expected = this.erasureKey(organization);
     if (request.confirm !== expected) {
@@ -737,14 +923,119 @@ export class AgentManagerFixtureState {
     };
   }
 
+  createOrganization(
+    installation: string,
+    request: OrganizationCreateRequest,
+  ): OrganizationCreateResult {
+    const state = this.stateOf(installation);
+    const name = request.name ?? '';
+    if (!/^[a-z0-9]([-a-z0-9]*[a-z0-9])?$/.test(name) || name.length > 56) {
+      throw refusal(
+        'invalid_request',
+        `Organization name ${JSON.stringify(name)}: lowercase letters, digits and hyphens, at most 56 characters`,
+      );
+    }
+    if (state.organizations.some(candidate => candidate.name === name)) {
+      throw refusal(
+        'conflict',
+        `Organization ${name} exists with the Agent Platform; update_organization changes it`,
+      );
+    }
+    const admins: OrganizationSubject[] = [
+      ...(request.adminGroups ?? []).map(group => ({
+        kind: 'Group',
+        name: group,
+      })),
+      ...(request.adminUsers ?? []).map(user => ({ kind: 'User', name: user })),
+    ];
+    if (request.mode === 'commit') {
+      if (installation !== ORGANIZATION_PULL_REQUEST_INSTALLATION) {
+        throw refusal(
+          'unsupported',
+          'mode commit is not configured for organizations on this installation (no organizations repository): use mode apply',
+        );
+      }
+      // Nothing live: the organization exists once the pull request merges.
+      const commit = organizationCreatePullRequest(name);
+      return {
+        organization: {
+          name,
+          ...(request.displayName && { displayName: request.displayName }),
+          admins,
+          harnesses: [],
+          workerReplicas: 1,
+        },
+        created: false,
+        next: `merge the pull request ${commit.pullRequest}; ${commit.review}`,
+        commit,
+      };
+    }
+    const organization: FixtureOrganizationState = {
+      installation,
+      name,
+      displayName: request.displayName ?? '',
+      state: 'pending',
+      // The person who created it manages it.
+      role: 'admin',
+      admins,
+    };
+    state.organizations.push(organization);
+    state.creating.set(name, this.now());
+    this.changed();
+    return {
+      organization: this.listed(installation, organization).organization!,
+      created: true,
+      next: 'agent-platform-operator creates the organization namespace and binds spec.admins to agent-platform:admin there; list_organizations and get_organization show the namespace once it reports it',
+    };
+  }
+
+  updateOrganizationAdmins(
+    installation: string,
+    request: OrganizationAdminsUpdate,
+  ): OrganizationUpdateResult {
+    const organization = this.organizationNamed(installation, request.name);
+    this.mustManage(organization);
+    const before = this.listed(installation, organization).organization!;
+    const current = adminsOf(before.admins);
+    const groups = request.adminGroups ?? current.adminGroups;
+    const users = request.adminUsers ?? current.adminUsers;
+    organization.admins = [
+      ...groups.map(group => ({ kind: 'Group', name: group })),
+      ...users.map(user => ({ kind: 'User', name: user })),
+    ];
+    const { namespace } = organization;
+    if (namespace) {
+      const members = this.stateOf(installation).members.get(namespace) ?? [];
+      this.stateOf(installation).members.set(
+        namespace,
+        groupsFirst([
+          ...adminMembersOf(organization.admins),
+          ...members.filter(member => member.binding !== FIRST_ADMINS_BINDING),
+        ]),
+      );
+    }
+    this.changed();
+    return {
+      before,
+      after: this.listed(installation, organization).organization!,
+      changed: ['admins'],
+    };
+  }
+
   listMembers(installation: string, namespace: string): OrganizationMember[] {
     this.organizationIn(installation, namespace);
     return this.stateOf(installation).members.get(namespace) ?? [];
   }
 
-  addMember(installation: string, request: MemberRequest): MemberResult {
+  addMember(installation: string, request: FixtureMemberRequest): MemberResult {
     const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
+    if ((request.role as string | undefined) === 'admin') {
+      throw refusal(
+        'invalid_request',
+        `the member tools do not give or remove the admin role: the admins are ${ADMINS_FROM}`,
+      );
+    }
     const role = request.role ?? 'user';
     const member: OrganizationMember = {
       kind: request.group ? 'Group' : 'User',
@@ -767,6 +1058,7 @@ export class AgentManagerFixtureState {
       this.changed();
     }
     return {
+      organization: organization.name,
       namespace: request.namespace,
       member,
       changed: !exists,
@@ -774,16 +1066,21 @@ export class AgentManagerFixtureState {
     };
   }
 
-  removeMember(installation: string, request: MemberRequest): MemberResult {
+  removeMember(
+    installation: string,
+    request: FixtureMemberRequest,
+  ): MemberResult {
     const organization = this.writableIn(installation, request.namespace);
     this.mustManage(organization);
     const kind = request.group ? 'Group' : 'User';
     const name = request.group ?? request.user!;
     const members = this.listMembers(installation, request.namespace);
+    // An admin stays one: the admins are the Organization's spec.admins.
     const removed = members.filter(
       member =>
         member.kind === kind &&
         member.name === name &&
+        member.role !== 'admin' &&
         (request.role === undefined || member.role === request.role),
     );
     if (removed.length === 0) {
@@ -793,19 +1090,10 @@ export class AgentManagerFixtureState {
       );
     }
     const kept = members.filter(member => !removed.includes(member));
-    if (
-      removed.some(member => member.binding === FIRST_ADMINS_BINDING) &&
-      !kept.some(member => member.binding === FIRST_ADMINS_BINDING)
-    ) {
-      // Admission's refusal, in its words (pinned by OrganizationPage.test).
-      throw refusal(
-        'forbidden',
-        `RoleBinding ${request.namespace}/${FIRST_ADMINS_BINDING}: if ${FIRST_ADMINS_BINDING} would lose its last admin: add another admin first (add_organization_member role admin); a lockout is a cluster-admin's to fix`,
-      );
-    }
     this.stateOf(installation).members.set(request.namespace, kept);
     this.changed();
     return {
+      organization: organization.name,
       namespace: request.namespace,
       member: removed[0],
       changed: true,
@@ -869,7 +1157,7 @@ export class AgentManagerFixtureState {
   private modelTarget(
     installation: string,
     namespace: string,
-  ): FixtureOrganization | undefined {
+  ): FixtureOrganizationState | undefined {
     if (namespace === MODEL_CONFIG_NAMESPACE) {
       return undefined;
     }
@@ -904,7 +1192,7 @@ export class AgentManagerFixtureState {
 
   private prepare(
     installation: string,
-    organization: FixtureOrganization | undefined,
+    organization: FixtureOrganizationState | undefined,
     operation: Omit<
       CredentialOperation,
       'id' | 'version' | 'state' | 'mode' | 'organization' | 'expiresAt'
@@ -930,7 +1218,6 @@ export class AgentManagerFixtureState {
         organization: organization
           ? {
               namespace: organization.namespace,
-              parent: organization.parent,
               organization: organization.name,
             }
           : { scope: 'platform', namespace: MODEL_CONFIG_NAMESPACE },
@@ -1107,7 +1394,7 @@ export class AgentManagerFixtureState {
 
   private writeModel(
     installation: string,
-    organization: FixtureOrganization | undefined,
+    organization: FixtureOrganizationState | undefined,
     request: OrganizationModelRequest,
   ): CredentialResourceResult {
     const { namespace, name } = request;
@@ -1726,8 +2013,8 @@ export class AgentManagerFixtureState {
   createAgent(
     installation: string,
     spec: AgentSpec & { mode?: string },
-  ): CreateAgentResult {
-    mustBeLive(spec.mode);
+  ): CreateAgentResult | CommitAgentResult {
+    const commits = commitsAgent(spec.mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, spec.namespace));
     const record = this.recordOf(installation, spec);
     if (
@@ -1738,6 +2025,9 @@ export class AgentManagerFixtureState {
     const validation = this.validation(installation, record, 'create');
     if (!validation.valid) {
       throw refusal('invalid_request', validation.errors!.join('; '));
+    }
+    if (commits) {
+      return agentCommit('create', record, false);
     }
     this.stateOf(installation).agents.set(keyOf(spec.namespace, spec.name), {
       ...record,
@@ -1794,16 +2084,16 @@ export class AgentManagerFixtureState {
     installation: string,
     update: AgentUpdate & { mode?: string },
   ): ValidateAgentResult {
-    mustBeLive(update.mode);
+    commitsAgent(update.mode, installation);
     const agent = this.stored(installation, update.namespace, update.name);
     return this.validation(installation, this.merged(agent, update), 'update');
   }
 
   updateAgent(
     installation: string,
-    update: AgentUpdate & { mode?: string },
-  ): UpdateAgentResult {
-    mustBeLive(update.mode);
+    update: AgentUpdate & { mode?: string; dryRun?: boolean },
+  ): UpdateAgentResult | (UpdateAgentResult & CommitAgentResult) {
+    const commits = commitsAgent(update.mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, update.namespace));
     const agent = this.stored(installation, update.namespace, update.name);
     const next = this.merged(agent, update);
@@ -1814,6 +2104,17 @@ export class AgentManagerFixtureState {
     const before = valuesOf(agent);
     const after = valuesOf(next);
     const changed = changedPaths(before, after);
+    if (commits) {
+      return {
+        agent: this.getAgent(installation, agent.namespace, agent.name),
+        before,
+        after,
+        changed,
+        manifests: validation.manifests,
+        requestedBy: FIXTURE_USER.email,
+        ...agentCommit('update', next, update.dryRun === true),
+      };
+    }
     if (changed.length > 0 || update.refreshSkills) {
       const current = this.view(agent);
       // What the agent settles in after the writes before this one, which
@@ -1853,10 +2154,13 @@ export class AgentManagerFixtureState {
     namespace: string,
     name: string,
     mode?: string,
-  ): DeleteAgentResult {
-    mustBeLive(mode);
+  ): DeleteAgentResult | CommitAgentResult {
+    const commits = commitsAgent(mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, namespace));
     const agent = this.stored(installation, namespace, name);
+    if (commits) {
+      return agentCommit('delete', agent, false);
+    }
     this.stateOf(installation).agents.delete(keyOf(namespace, name));
     this.changed();
     const others = this.agentsIn(installation, namespace);

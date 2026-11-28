@@ -14,15 +14,19 @@ import {
   signIn,
   test as base,
 } from './fixtures';
-import { KUBECONFIG, kubectl, NEEDS_KUBECONFIG } from './kubectl';
+import {
+  AGENT_PLATFORM_NAMESPACE_PATH,
+  KUBECONFIG,
+  kubectl,
+  NEEDS_KUBECONFIG,
+} from './kubectl';
 import { RUN, contextOptionsFor, lab, type LabUser } from './lab';
 
 /**
  * Agents per organization (giantswarm/giantswarm#36698 D6,
  * giantswarm/backstage#2606, #3363, #3378), the portal half of agentlab's
  * `organizations-test` (giantswarm/agentlab#1155), in a browser: what only a
- * page shows. Two organizations under the lab's parent
- * namespace:
+ * page shows. Two organizations:
  *
  * - the lab's own ({@link lab.organization}), whose `organization-editors`
  *   binds the developers, so the lab's developer, and where the worker's
@@ -58,15 +62,10 @@ const users = {
 } satisfies Record<string, LabUser>;
 
 const organization = 'e2e-organization';
-const { parent: PARENT, name: LAB_ORGANIZATION } = lab.organization;
-const ORGANIZATION_RESOURCE =
-  'agentplatformorganizations.agent-platform.giantswarm.io';
-/** The spec's organization in the lab's parent namespace, as kubectl names it. */
-const organizationRef = [
-  '-n',
-  PARENT,
-  `${ORGANIZATION_RESOURCE}/${organization}`,
-];
+const { name: LAB_ORGANIZATION } = lab.organization;
+const ORGANIZATION_RESOURCE = 'organizations.security.giantswarm.io';
+/** The spec's `Organization` (cluster-scoped), as kubectl names it. */
+const organizationRef = [`${ORGANIZATION_RESOURCE}/${organization}`];
 /** The organization as a sentence names it. */
 const inSentence = `the ${organization} organization`;
 /** The lab API server's `--oidc-username-prefix` and groups prefix. */
@@ -84,9 +83,9 @@ function detailPathIn(namespace: string): string {
   return `/customize/agents/${lab.installation}/${namespace}/${agent.slug}`;
 }
 
-/** An organization's `<parent>/<name>` page. */
+/** An organization's page. */
 function organizationPath(name: string): string {
-  return `/organizations/${lab.installation}/${PARENT}/${name}`;
+  return `/organizations/${lab.installation}/${name}`;
 }
 
 type OrganizationFixtures = {
@@ -255,10 +254,11 @@ async function deleteOrganization() {
 
 /**
  * The spec's organization, made as its creator makes one and applied again as
- * it is: the `AgentPlatformOrganization` (the platform Harness, one worker),
- * Ready with its namespace; then there its editor (alice's group) and user
- * (the developer) and its model, the lab's default (`lab.defaultModel`) on
- * the lab's `aiModel`, marked the namespace's default. Its key is a
+ * it is: the `Organization` with the Agent Platform on (the platform
+ * Harness, one worker), `AgentPlatformReady` with its namespace; then there
+ * its editor (alice's group) and user (the developer) and its model, the
+ * lab's default (`lab.defaultModel`) on the lab's `aiModel`, marked the
+ * namespace's default. Its key is a
  * placeholder in a tenant credential (the only Secret the chart admits a
  * ModelConfig's key from): the spec runs no turn. Returns the organization's
  * namespace.
@@ -284,7 +284,7 @@ async function applyOrganization(): Promise<string> {
     ...organizationRef,
     '--ignore-not-found',
     '-o',
-    'jsonpath={.status.namespace}',
+    `jsonpath={${AGENT_PLATFORM_NAMESPACE_PATH}}`,
   ]);
   for (const [user, group] of [
     [users.alice, 'tenant-a'],
@@ -300,15 +300,23 @@ async function applyOrganization(): Promise<string> {
   await kubectl(
     ['apply', '-f', '-'],
     JSON.stringify({
-      apiVersion: 'agent-platform.giantswarm.io/v1alpha1',
-      kind: 'AgentPlatformOrganization',
-      metadata: { name: organization, namespace: PARENT },
-      spec: { harnesses: ['kagent'], workers: { replicas: 1 } },
+      apiVersion: 'security.giantswarm.io/v1alpha1',
+      kind: 'Organization',
+      metadata: { name: organization },
+      spec: {
+        capabilities: {
+          agentPlatform: {
+            enabled: true,
+            harnesses: ['kagent'],
+            workers: { replicas: 1 },
+          },
+        },
+      },
     }),
   );
   await kubectl([
     'wait',
-    '--for=condition=Ready',
+    '--for=condition=AgentPlatformReady',
     ...organizationRef,
     '--timeout=3m',
   ]);
@@ -316,11 +324,11 @@ async function applyOrganization(): Promise<string> {
     'get',
     ...organizationRef,
     '-o',
-    'jsonpath={.status.namespace}',
+    `jsonpath={${AGENT_PLATFORM_NAMESPACE_PATH}}`,
   ]);
   if (!namespace) {
     throw new Error(
-      `the organization ${PARENT}/${organization} is Ready without status.namespace`,
+      `the organization ${organization} is AgentPlatformReady without the agentPlatform entry of status.namespaces`,
     );
   }
   const { stdout: model } = await kubectl([
@@ -417,11 +425,16 @@ function fact(page: Page, term: string) {
     .locator('xpath=following-sibling::dd[1]');
 }
 
-/** The Organizations list's row of an organization: its name, then its parent and namespace. */
+/**
+ * The Organizations list's row of an organization, by the link to its page:
+ * a row shows the organization's display name where it has one (the lab's
+ * `default` shows as "Lab"), so its name alone does not find it.
+ */
 function organizationRow(page: Page, name: string) {
   return page
     .getByRole('grid', { name: `Your organizations on ${lab.installation}` })
-    .getByRole('row', { name: new RegExp(`^${name} `) });
+    .getByRole('row')
+    .filter({ has: page.locator(`a[href$="${organizationPath(name)}"]`) });
 }
 
 test.describe('agents per organization', () => {
@@ -516,7 +529,14 @@ test.describe('agents per organization', () => {
       await open(alice, organizationAgent, users.alice);
       await expectAgentRendered(alice);
       await expect(fact(alice, 'Owner')).toHaveText(organization);
-      await expect(fact(alice, 'Created by')).toHaveText(users.alice.email);
+      // The creator's name, with the e-mail it stands for under it.
+      const createdBy = fact(alice, 'Created by');
+      await expect(
+        createdBy.getByText(users.alice.name, { exact: true }),
+      ).toBeVisible();
+      await expect(
+        createdBy.getByText(users.alice.email, { exact: true }),
+      ).toBeVisible();
       await expect(editButton(alice), 'its editor may edit it').toBeVisible();
       await alice.getByRole('button', { name: 'Agent actions' }).click();
       await expect(

@@ -382,12 +382,18 @@ describe('useCreateSession', () => {
 
   it('says a refusal from the controller as one that names the agent’s organization', async () => {
     // agent-manager's answer when the controller refuses CreateSession
-    // (PermissionDenied): the person may not use that tenant's agents.
-    callTool.mockRejectedValueOnce(
-      new Error(
+    // (PermissionDenied): the person may not use that tenant's agents. The
+    // client reads the organizations first, to name the agent's one.
+    const answer = callTool.getMockImplementation()!;
+    callTool.mockImplementation(async (name, args, installation) => {
+      if (name !== 'x_agent-manager_start_session') {
+        return answer(name, args, installation);
+      }
+      callTool.mockImplementation(answer);
+      throw new Error(
         'forbidden: kagent: create session: not allowed to create session',
-      ),
-    );
+      );
+    });
     const { result } = renderWith();
 
     await act(async () => {

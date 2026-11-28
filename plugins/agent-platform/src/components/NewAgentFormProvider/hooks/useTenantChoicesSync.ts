@@ -1,6 +1,9 @@
-import { useEffect } from 'react';
+import { useContext, useEffect, useState } from 'react';
+import { QueryClientContext } from '@tanstack/react-query';
 
 import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
+import { useMusterPluginApi } from '../../../hooks/useMusterPluginApi';
+import { organizationsQuery } from '../../../hooks/organizationsQuery';
 import {
   mayCreateAgentsIn,
   ORGANIZATIONS_CAPABILITY,
@@ -50,6 +53,35 @@ export function useTenantChoicesSync(): TenantChoicesSync {
     byOrganization && installation
       ? organizations.organizationsOf(installation)
       : undefined;
+  // The directory keeps its answers for a minute. When the form opens, it
+  // reads again each answer the directory holds from before it opened, into
+  // the same entries, on every installation, picked or not: an organization
+  // the person was added to a moment ago is then a choice, and its models
+  // are read (`useNamespacedResources` reads the same entries), also where
+  // they decide which environments the form offers. The wizard's steps share
+  // one mount of this hook (`NewAgentStep` is not keyed by step), so a step
+  // change reads nothing again. An answer read since the form opened is
+  // kept; a read that failed is read again on Check again.
+  const musterApi = useMusterPluginApi();
+  const queryClient = useContext(QueryClientContext);
+  const [openedAt] = useState(() => Date.now());
+  const answeredKey = edit
+    ? ''
+    : organizations.installations
+        .filter(name => organizations.organizationsOf(name) !== undefined)
+        .join(',');
+  useEffect(() => {
+    if (!queryClient || !musterApi || !answeredKey) {
+      return;
+    }
+    for (const name of answeredKey.split(',')) {
+      const options = organizationsQuery(musterApi, name);
+      const readAt = queryClient.getQueryState(options.queryKey)?.dataUpdatedAt;
+      if (readAt !== undefined && readAt < openedAt) {
+        queryClient.prefetchQuery({ ...options, staleTime: 0 });
+      }
+    }
+  }, [queryClient, musterApi, answeredKey, openedAt]);
   const organizationsFailed =
     byOrganization &&
     Boolean(installation) &&

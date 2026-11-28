@@ -51,7 +51,6 @@ jest.mock('@giantswarm/backstage-plugin-gs', () => ({
 const PAYMENTS = {
   namespace: 'agents-payments-x7k2q',
   organization: 'payments',
-  parent: 'org-acme',
 };
 
 /** A model agent-manager wrote with `set_organization_model`. */

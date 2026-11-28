@@ -86,8 +86,8 @@ function renderPages(
 describe("the Agent Platform's own pages", () => {
   it.each([
     '/organizations',
-    '/organizations/gazelle/org-acme/payments',
-    '/organizations/gazelle/org-acme/payments/models',
+    '/organizations/gazelle/payments',
+    '/organizations/gazelle/payments/models',
   ])('requires the organizations opt-in to route %s', async path => {
     renderPages(FeatureFlagState.Active, path);
 
@@ -97,8 +97,8 @@ describe("the Agent Platform's own pages", () => {
 
   it.each([
     '/organizations',
-    '/organizations/gazelle/org-acme/payments',
-    '/organizations/gazelle/org-acme/payments/models',
+    '/organizations/gazelle/payments',
+    '/organizations/gazelle/payments/models',
   ])('routes %s with the organizations opt-in', async path => {
     renderPages(FeatureFlagState.Active, path, [], FeatureFlagState.Active);
 

@@ -70,6 +70,8 @@ export const AGENT_MANAGER_TOOLS = {
   startSession: 'start_session',
   listOrganizations: 'list_organizations',
   getOrganization: 'get_organization',
+  createOrganization: 'create_organization',
+  updateOrganization: 'update_organization',
   deleteOrganization: 'delete_organization',
   listOrganizationMembers: 'list_organization_members',
   addOrganizationMember: 'add_organization_member',

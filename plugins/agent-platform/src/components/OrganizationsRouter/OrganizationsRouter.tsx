@@ -10,8 +10,8 @@ import { QueryClientProvider } from '../QueryClientProvider';
 import { RouteRefRedirect } from '../RouteRefRedirect';
 
 function OrganizationRoute() {
-  const { installation, parent, name } = useParams();
-  if (!installation || !parent || !name) {
+  const { installation, name } = useParams();
+  if (!installation || !name) {
     return null;
   }
   // One page per organization: its state (an open delete dialog, a delete
@@ -19,24 +19,22 @@ function OrganizationRoute() {
   // address names another, as it would with the page reused.
   return (
     <OrganizationPage
-      key={`${installation}/${parent}/${name}`}
+      key={`${installation}/${name}`}
       installation={installation}
-      parent={parent}
       name={name}
     />
   );
 }
 
 function CredentialFormRoute() {
-  const { installation, parent, name, operation } = useParams();
-  if (!installation || !parent || !name || !operation) {
+  const { installation, name, operation } = useParams();
+  if (!installation || !name || !operation) {
     return null;
   }
   return (
     <CredentialFormPage
-      key={`${installation}/${parent}/${name}/${operation}`}
+      key={`${installation}/${name}/${operation}`}
       installation={installation}
-      parent={parent}
       name={name}
       operation={operation}
     />
@@ -45,7 +43,7 @@ function CredentialFormRoute() {
 
 /**
  * The pages under `/organizations`: the bare path lists the organizations
- * the person belongs to, `<installation>/<parent>/<name>` is one
+ * the person belongs to, `<installation>/<name>` is one
  * organization's page (its tabs below it), and its `credentials/<operation>`
  * the credential form of one request; anything else goes to the list.
  * Its own `PageHeaderActionsProvider`, since the page renders without the
@@ -59,11 +57,11 @@ export function OrganizationsRouter() {
           <Routes>
             <Route index element={<OrganizationsIndexPage />} />
             <Route
-              path=":installation/:parent/:name/credentials/:operation"
+              path=":installation/:name/credentials/:operation"
               element={<CredentialFormRoute />}
             />
             <Route
-              path=":installation/:parent/:name/*"
+              path=":installation/:name/*"
               element={<OrganizationRoute />}
             />
             <Route

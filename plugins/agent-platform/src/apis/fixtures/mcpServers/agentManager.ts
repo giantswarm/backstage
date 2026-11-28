@@ -14,18 +14,23 @@ import {
 import {
   MODEL_OPERATION_FIELDS,
   ORGANIZATIONS_CAPABILITY,
-  type MemberRequest,
+  type OrganizationAdminsUpdate,
+  type OrganizationCreateRequest,
   type OrganizationCredentialReplacement,
   type OrganizationModelRequest,
 } from '../../../lib/organizations';
 import { DEFAULT_WORKSPACE_CAPABILITY } from '../../../lib/defaultWorkspace';
+import { MODEL_CONFIG_NAMESPACE } from '../../../lib/modelConfigs';
 import { MODEL_SETTINGS_FIELDS } from '../../../lib/modelSettings';
 import { PLATFORM_TENANT_NAMESPACE } from '../../../lib/tenants';
 import { TOOLCHAINS_CAPABILITY } from '../../../lib/toolchainManager';
 import type { ListModelConfigsAnswer } from '../../AgentManagerClient';
 import {
   agentManagerFixtureState,
+  ORGANIZATION_PULL_REQUEST_INSTALLATION,
+  refusal,
   type AgentManagerFixtureState,
+  type FixtureMemberRequest,
 } from '../agentManagerFixtureState';
 import { FIXTURE_HARNESS } from '../agentPlatformFixtureData';
 import { asJson, text } from './jsonTools';
@@ -50,6 +55,7 @@ const agentWriteSchema = (installation: string) => ({
   type: 'object',
   properties: Object.fromEntries(
     [
+      'organization',
       'namespace',
       'name',
       'toolset',
@@ -73,7 +79,7 @@ const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
   capabilities: {
     create: true,
     validate: true,
-    commit: false,
+    commit: installation === ORGANIZATION_PULL_REQUEST_INSTALLATION,
     [TAGS_CAPABILITY]: true,
     [EGRESS_POLICIES_CAPABILITY]: true,
     [ORGANIZATIONS_CAPABILITY]: true,
@@ -96,6 +102,98 @@ const infoOf = (installation: string, managed: string[]): AgentManagerInfo => ({
   skillsRepositories: [],
 });
 
+/** A tool's arguments without `organization` and `namespace`, and the namespace found. */
+type Placed = {
+  rest: Record<string, unknown>;
+  namespace: string;
+  /** The organization the call addressed, which the answer names. */
+  organization?: string;
+};
+
+/** Splits off the two arguments that say where a tool acts. */
+function split(args: Record<string, unknown>) {
+  const { organization, namespace, ...rest } = args;
+  return {
+    rest,
+    organization: typeof organization === 'string' ? organization : '',
+    namespace: typeof namespace === 'string' ? namespace : '',
+  };
+}
+
+/**
+ * Where an agent tool acts, as agent-manager places it: `organization`
+ * alone is the organization's namespace; without it `namespace` is an
+ * installation namespace, and an organization's namespace is refused with
+ * the organization to pass.
+ */
+function agentPlace(
+  state: AgentManagerFixtureState,
+  installation: string,
+  args: Record<string, unknown>,
+): Placed {
+  const { rest, organization, namespace } = split(args);
+  if (organization) {
+    if (namespace) {
+      throw refusal(
+        'invalid_request',
+        `namespace ${namespace} with organization ${organization}: the organization decides the namespace; pass organization alone`,
+      );
+    }
+    return {
+      rest,
+      namespace: state.organizationNamespace(installation, organization),
+      organization,
+    };
+  }
+  const owner = state.organizationOfNamespace(installation, namespace);
+  if (owner) {
+    throw refusal(
+      'invalid_request',
+      `namespace ${namespace} is the namespace of organization ${owner}: pass organization "${owner}" instead of namespace`,
+    );
+  }
+  return { rest, namespace };
+}
+
+/**
+ * Where an organization tool acts: the organization, by its name. The tools
+ * bind their arguments strictly, so the namespace they once took is
+ * refused. With `optional` (the model tools), no organization is the
+ * installation's models.
+ */
+function organizationPlace(
+  state: AgentManagerFixtureState,
+  installation: string,
+  args: Record<string, unknown>,
+  optional = false,
+): Placed {
+  if (Object.hasOwn(args, 'namespace')) {
+    throw refusal(
+      'invalid_request',
+      'unknown argument namespace: pass organization, the name of the Organization',
+    );
+  }
+  const { rest, organization } = split(args);
+  if (!organization) {
+    if (optional) {
+      return { rest, namespace: MODEL_CONFIG_NAMESPACE };
+    }
+    throw refusal('invalid_request', 'organization is required');
+  }
+  return {
+    rest,
+    namespace: state.organizationNamespace(installation, organization),
+    organization,
+  };
+}
+
+/** An answer naming the organization the call addressed, as agent-manager's do. */
+function naming<T>(answer: T, organization: string | undefined): T {
+  return organization && answer && typeof answer === 'object'
+    ? { organization, ...answer }
+    : answer;
+}
+
 /**
  * agent-manager's tools in fixture mode, on `state` (the shared one by
  * default): the organizations and agents of the data set, and every write
@@ -112,113 +210,197 @@ export function agentManagerFixtureServer(
     [AGENT_MANAGER_TOOLS.getOrganization]: (args, { installation }) => {
       const { organization, erases } = state().getOrganization(
         installation,
-        text(args, 'namespace'),
         text(args, 'name'),
       );
       return { ...organization, ...(erases && { erases }) };
     },
     [AGENT_MANAGER_TOOLS.deleteOrganization]: (args, { installation }) =>
       state().deleteOrganization(installation, {
-        parent: text(args, 'namespace'),
         name: text(args, 'name'),
         ...(typeof args.confirm === 'string' && { confirm: args.confirm }),
       }),
-    [AGENT_MANAGER_TOOLS.listOrganizationMembers]: (
+    [AGENT_MANAGER_TOOLS.createOrganization]: (args, { installation }) =>
+      state().createOrganization(
+        installation,
+        args as OrganizationCreateRequest,
+      ),
+    [AGENT_MANAGER_TOOLS.updateOrganization]: (args, { installation }) =>
+      state().updateOrganizationAdmins(
+        installation,
+        args as OrganizationAdminsUpdate,
+      ),
+    [AGENT_MANAGER_TOOLS.listOrganizationMembers]: (args, { installation }) => {
+      const at = organizationPlace(state(), installation, args);
+      return naming(
+        { members: state().listMembers(installation, at.namespace) },
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.addOrganizationMember]: (args, { installation }) => {
+      const at = organizationPlace(state(), installation, args);
+      return state().addMember(installation, {
+        ...at.rest,
+        namespace: at.namespace,
+      } as FixtureMemberRequest);
+    },
+    [AGENT_MANAGER_TOOLS.removeOrganizationMember]: (
       args,
       { installation },
-    ) => ({
-      members: state().listMembers(installation, text(args, 'namespace')),
-    }),
-    [AGENT_MANAGER_TOOLS.addOrganizationMember]: (args, { installation }) =>
-      state().addMember(installation, args as MemberRequest),
-    [AGENT_MANAGER_TOOLS.removeOrganizationMember]: (args, { installation }) =>
-      state().removeMember(installation, args as MemberRequest),
+    ) => {
+      const at = organizationPlace(state(), installation, args);
+      return state().removeMember(installation, {
+        ...at.rest,
+        namespace: at.namespace,
+      } as FixtureMemberRequest);
+    },
     [AGENT_MANAGER_TOOLS.listOrganizationConnectors]: (
       args,
       { installation },
-    ) => ({
-      connectors: state()
-        .listConnectors(installation, text(args, 'namespace'))
-        // An agent-manager older than 3.3.4 does not mark the muster bindings.
-        .map(({ musterBindingOf, ...connector }) =>
-          installation === WITHOUT_CONNECTORS
-            ? connector
-            : { ...connector, ...(musterBindingOf && { musterBindingOf }) },
-        ),
-    }),
-    [AGENT_MANAGER_TOOLS.setOrganizationModel]: (args, { installation }) =>
-      state().setOrganizationModel(
-        installation,
-        args as OrganizationModelRequest,
-      ),
-    [AGENT_MANAGER_TOOLS.deleteOrganizationObject]: (args, { installation }) =>
-      state().deleteOrganizationObject(installation, {
-        namespace: text(args, 'namespace'),
-        name: text(args, 'name'),
-        kind: text(args, 'kind'),
-        dryRun: args.dryRun === true,
-      }),
+    ) => {
+      const at = organizationPlace(state(), installation, args);
+      return {
+        organization: at.organization,
+        connectors: state()
+          .listConnectors(installation, at.namespace)
+          // An agent-manager older than 3.3.4 does not mark the muster bindings.
+          .map(({ musterBindingOf, ...connector }) =>
+            installation === WITHOUT_CONNECTORS
+              ? connector
+              : { ...connector, ...(musterBindingOf && { musterBindingOf }) },
+          ),
+      };
+    },
+    [AGENT_MANAGER_TOOLS.setOrganizationModel]: (args, { installation }) => {
+      const at = organizationPlace(state(), installation, args, true);
+      return naming(
+        state().setOrganizationModel(installation, {
+          ...at.rest,
+          namespace: at.namespace,
+        } as OrganizationModelRequest),
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.deleteOrganizationObject]: (
+      args,
+      { installation },
+    ) => {
+      const at = organizationPlace(state(), installation, args, true);
+      return naming(
+        state().deleteOrganizationObject(installation, {
+          namespace: at.namespace,
+          name: text(args, 'name'),
+          kind: text(args, 'kind'),
+          dryRun: args.dryRun === true,
+        }),
+        at.organization,
+      );
+    },
     [AGENT_MANAGER_TOOLS.replaceOrganizationCredential]: (
       args,
       { installation },
-    ) =>
-      state().replaceCredential(
-        installation,
-        args as OrganizationCredentialReplacement,
-      ),
+    ) => {
+      const at = organizationPlace(state(), installation, args, true);
+      return naming(
+        state().replaceCredential(installation, {
+          ...at.rest,
+          namespace: at.namespace,
+        } as OrganizationCredentialReplacement),
+        at.organization,
+      );
+    },
     [AGENT_MANAGER_TOOLS.listModelConfigs]: (
       args,
       { installation },
-    ): ListModelConfigsAnswer => ({
-      modelConfigs: state().listModelConfigs(
-        installation,
-        text(args, 'namespace'),
-      ),
-    }),
-    [AGENT_MANAGER_TOOLS.listEgressPolicies]: (args, { installation }) => ({
-      egressPolicies: state().listEgressPolicies(
-        installation,
-        text(args, 'namespace'),
-      ),
-    }),
-    [AGENT_MANAGER_TOOLS.validateAgent]: (args, { installation }) =>
-      args.update === true
-        ? state().validateUpdate(
+    ): ListModelConfigsAnswer => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        {
+          modelConfigs: state().listModelConfigs(installation, at.namespace),
+        },
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.listEgressPolicies]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        {
+          egressPolicies: state().listEgressPolicies(
             installation,
-            args as AgentUpdate & { mode?: string },
-          )
-        : state().validateAgent(installation, args as AgentSpec),
-    [AGENT_MANAGER_TOOLS.createAgent]: (args, { installation }) =>
-      state().createAgent(installation, args as AgentSpec & { mode?: string }),
-    [AGENT_MANAGER_TOOLS.getAgent]: (args, { installation }) =>
-      state().getAgent(
-        installation,
-        text(args, 'namespace'),
-        text(args, 'name'),
-      ),
-    [AGENT_MANAGER_TOOLS.getAgentStatus]: (args, { installation }) =>
-      state().getAgentStatus(
-        installation,
-        text(args, 'namespace'),
-        text(args, 'name'),
-      ),
-    [AGENT_MANAGER_TOOLS.updateAgent]: (args, { installation }) =>
-      state().updateAgent(
-        installation,
-        args as AgentUpdate & { mode?: string },
-      ),
-    [AGENT_MANAGER_TOOLS.deleteAgent]: (args, { installation }) =>
-      state().deleteAgent(
-        installation,
-        text(args, 'namespace'),
-        text(args, 'name'),
-        typeof args.mode === 'string' ? args.mode : undefined,
-      ),
-    [AGENT_MANAGER_TOOLS.startSession]: (args, { installation }) =>
-      state().startSession(
-        installation,
-        args as StartSessionRequest & { noWorkspace?: boolean },
-      ),
+            at.namespace,
+          ),
+        },
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.validateAgent]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      const placed = { ...at.rest, namespace: at.namespace };
+      return naming(
+        args.update === true
+          ? state().validateUpdate(
+              installation,
+              placed as AgentUpdate & { mode?: string },
+            )
+          : state().validateAgent(installation, placed as AgentSpec),
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.createAgent]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        state().createAgent(installation, {
+          ...at.rest,
+          namespace: at.namespace,
+        } as AgentSpec & { mode?: string }),
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.getAgent]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        state().getAgent(installation, at.namespace, text(args, 'name')),
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.getAgentStatus]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        state().getAgentStatus(installation, at.namespace, text(args, 'name')),
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.updateAgent]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        state().updateAgent(installation, {
+          ...at.rest,
+          namespace: at.namespace,
+        } as AgentUpdate & { mode?: string; dryRun?: boolean }),
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.deleteAgent]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        state().deleteAgent(
+          installation,
+          at.namespace,
+          text(args, 'name'),
+          typeof args.mode === 'string' ? args.mode : undefined,
+        ),
+        at.organization,
+      );
+    },
+    [AGENT_MANAGER_TOOLS.startSession]: (args, { installation }) => {
+      const at = agentPlace(state(), installation, args);
+      return naming(
+        state().startSession(installation, {
+          ...at.rest,
+          namespace: at.namespace,
+        } as StartSessionRequest & { noWorkspace?: boolean }),
+        at.organization,
+      );
+    },
   };
   return {
     server: AGENT_MANAGER_SERVER,
@@ -230,7 +412,7 @@ export function agentManagerFixtureServer(
         type: 'object',
         properties: Object.fromEntries(
           [
-            'namespace',
+            'organization',
             'name',
             'provider',
             'model',

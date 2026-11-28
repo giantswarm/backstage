@@ -25,6 +25,14 @@ import {
 } from '../lib/agentManager';
 import type { CredentialResourceResult } from '../lib/credentialOperations';
 import { modelEndpointProblem } from '../lib/modelEndpoint';
+import { MODEL_CONFIG_NAMESPACE } from '../lib/modelConfigs';
+import { PLATFORM_TENANT_NAMESPACE } from '../lib/tenants';
+import {
+  modeArgument,
+  modelNamespaceRefused,
+  organizationOfNamespace,
+  type OrganizationReads,
+} from '../lib/organizations';
 import type {
   MemberRequest,
   MemberResult,
@@ -32,8 +40,12 @@ import type {
   OrganizationConnector,
   OrganizationCredentialReplacement,
   OrganizationModelRequest,
-  AgentPlatformOrganization,
+  OrganizationSummary,
+  OrganizationAdminsUpdate,
+  OrganizationCreateRequest,
+  OrganizationCreateResult,
   OrganizationDeleteResult,
+  OrganizationUpdateResult,
   OrganizationDetails,
   OrganizationErasure,
   OrganizationMembers,
@@ -63,6 +75,29 @@ const CREDENTIAL_REQUEST_TOOLS: ReadonlySet<AgentManagerTool> = new Set([
   AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
 ]);
 
+/**
+ * `erases` with every list present: agent-manager answers them `null` when
+ * the organization has no namespace yet and only organization-operator's
+ * namespace goes with it. `sessions` keeps its `null`, which says they could
+ * not be counted.
+ */
+function erasureOf(erases: OrganizationErasure): OrganizationErasure {
+  return {
+    ...erases,
+    namespace: erases.namespace ?? '',
+    agents: erases.agents ?? [],
+    helmReleases: erases.helmReleases ?? [],
+    models: erases.models ?? [],
+    connectors: erases.connectors ?? [],
+    egressPolicies: erases.egressPolicies ?? [],
+    credentials: erases.credentials ?? [],
+    members: erases.members ?? [],
+  };
+}
+
+/** How an agent tool is told where it acts. */
+type AgentPlace = { organization: string } | { namespace: string };
+
 /** `list_model_configs`' answer, as the client reads it. */
 export type ListModelConfigsAnswer = {
   modelConfigs?: AgentManagerModelConfig[];
@@ -82,7 +117,69 @@ export class AgentManagerClient {
   constructor(
     private readonly musterApi: MusterApi,
     readonly installation: string,
-  ) {}
+    reads?: OrganizationReads,
+  ) {
+    this.reads = reads ?? {
+      info: () => this.getInfo(),
+      listing: () => this.listOrganizations(),
+    };
+  }
+
+  /**
+   * `get_info` and `list_organizations`, which tell an organization's
+   * namespace and the installation's own; cached where the caller has a
+   * cache, read afresh otherwise.
+   */
+  private readonly reads: OrganizationReads;
+
+  /** The organization's name whose namespace `namespace` is, if any. */
+  private organizationOf(namespace: string): Promise<string | undefined> {
+    return organizationOfNamespace(namespace, this.reads);
+  }
+
+  /**
+   * Where an agent tool acts on `namespace`: an organization's namespace by
+   * the organization's name, as agent-manager takes it; any other namespace
+   * as it is. A failed read of the organizations fails the call with its
+   * own reason: sent as it is, the namespace would come back refused in
+   * words about the tool's arguments.
+   */
+  private async agentPlace(namespace: string): Promise<AgentPlace> {
+    if (!namespace || namespace === PLATFORM_TENANT_NAMESPACE) {
+      return { namespace };
+    }
+    const organization = await this.organizationOf(namespace);
+    return organization ? { organization } : { namespace };
+  }
+
+  /**
+   * Where a model tool acts on `namespace`: no organization for the
+   * installation's models, in the platform namespace `get_info` names
+   * (`namespaces.default`; `kagent` where it names none), the organization's
+   * name for an organization's namespace (`known`, when the caller knows
+   * it). Any other namespace is refused before the call: without an
+   * organization agent-manager acts on its own platform namespace's models,
+   * whatever namespace the portal meant. `get_info` is read afresh here.
+   */
+  private async modelPlace(
+    namespace: string,
+    known?: string,
+  ): Promise<{ organization?: string }> {
+    if (known) {
+      return { organization: known };
+    }
+    // Read afresh, not from the cache: a write goes where agent-manager's
+    // configuration says now.
+    const info = await this.getInfo();
+    if (namespace === (info.namespaces?.default || MODEL_CONFIG_NAMESPACE)) {
+      return {};
+    }
+    const organization = await this.organizationOf(namespace);
+    if (!organization) {
+      throw new Error(modelNamespaceRefused(namespace));
+    }
+    return { organization };
+  }
 
   private async call<T>(
     tool: AgentManagerTool,
@@ -121,17 +218,27 @@ export class AgentManagerClient {
   }
 
   /** The dry run: the manifests a create would apply, and every violation. */
-  validateAgent(spec: AgentSpec): Promise<ValidateAgentResult> {
-    return this.call<ValidateAgentResult>(AGENT_MANAGER_TOOLS.validateAgent, {
-      ...spec,
-    });
+  async validateAgent(spec: AgentSpec): Promise<ValidateAgentResult> {
+    return this.call<ValidateAgentResult>(
+      AGENT_MANAGER_TOOLS.validateAgent,
+      await this.placed(spec),
+    );
   }
 
   /** Applies the release as the person. */
-  createAgent(spec: AgentSpec): Promise<CreateAgentResult> {
-    return this.call<CreateAgentResult>(AGENT_MANAGER_TOOLS.createAgent, {
-      ...spec,
-    });
+  async createAgent(spec: AgentSpec): Promise<CreateAgentResult> {
+    return this.call<CreateAgentResult>(
+      AGENT_MANAGER_TOOLS.createAgent,
+      await this.placed(spec),
+    );
+  }
+
+  /** An agent tool's arguments with `namespace` as {@link agentPlace} says. */
+  private async placed<T extends { namespace: string }>(
+    args: T,
+  ): Promise<Omit<T, 'namespace'> & AgentPlace> {
+    const { namespace, ...rest } = args;
+    return { ...rest, ...(await this.agentPlace(namespace)) };
   }
 
   /**
@@ -139,27 +246,27 @@ export class AgentManagerClient {
    * giantswarm/agent-manager#24). Offered only when `get_info` reports the
    * `commit` capability.
    */
-  commitAgent(spec: AgentSpec): Promise<CommitAgentResult> {
+  async commitAgent(spec: AgentSpec): Promise<CommitAgentResult> {
     return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.createAgent, {
-      ...spec,
+      ...(await this.placed(spec)),
       mode: 'commit',
     });
   }
 
   /** One verdict on the Agent's readiness on the Harness it names. */
-  getAgentStatus(namespace: string, name: string): Promise<AgentStatus> {
-    return this.call<AgentStatus>(AGENT_MANAGER_TOOLS.getAgentStatus, {
-      namespace,
-      name,
-    });
+  async getAgentStatus(namespace: string, name: string): Promise<AgentStatus> {
+    return this.call<AgentStatus>(
+      AGENT_MANAGER_TOOLS.getAgentStatus,
+      await this.placed({ namespace, name }),
+    );
   }
 
   /** The agent as agent-manager reads it: what an edit starts from. */
-  getAgent(namespace: string, name: string): Promise<AgentManagerAgent> {
-    return this.call<AgentManagerAgent>(AGENT_MANAGER_TOOLS.getAgent, {
-      namespace,
-      name,
-    });
+  async getAgent(namespace: string, name: string): Promise<AgentManagerAgent> {
+    return this.call<AgentManagerAgent>(
+      AGENT_MANAGER_TOOLS.getAgent,
+      await this.placed({ namespace, name }),
+    );
   }
 
   /** The ModelConfigs of a namespace — the values `modelConfig` may take. */
@@ -168,7 +275,7 @@ export class AgentManagerClient {
   ): Promise<AgentManagerModelConfig[]> {
     const result = await this.call<ListModelConfigsAnswer>(
       AGENT_MANAGER_TOOLS.listModelConfigs,
-      { namespace },
+      await this.agentPlace(namespace),
     );
     return result.modelConfigs ?? [];
   }
@@ -183,7 +290,10 @@ export class AgentManagerClient {
   ): Promise<AgentManagerEgressPolicy[]> {
     const result = await this.call<{
       egressPolicies?: AgentManagerEgressPolicy[];
-    }>(AGENT_MANAGER_TOOLS.listEgressPolicies, { namespace });
+    }>(
+      AGENT_MANAGER_TOOLS.listEgressPolicies,
+      await this.agentPlace(namespace),
+    );
     return result.egressPolicies ?? [];
   }
 
@@ -194,22 +304,23 @@ export class AgentManagerClient {
    * answers as `commitUpdateAgent` would: an agent applied from git is
    * validated rather than refused with `gitops_owned`.
    */
-  validateUpdate(
+  async validateUpdate(
     update: AgentUpdate,
     mode: WriteMode = 'apply',
   ): Promise<ValidateAgentResult> {
     return this.call<ValidateAgentResult>(AGENT_MANAGER_TOOLS.validateAgent, {
-      ...update,
+      ...(await this.placed(update)),
       update: true,
       ...(mode === 'commit' ? { mode } : {}),
     });
   }
 
   /** Merges `update` into the release's values and writes it, as the person. */
-  updateAgent(update: AgentUpdate): Promise<UpdateAgentResult> {
-    return this.call<UpdateAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...update,
-    });
+  async updateAgent(update: AgentUpdate): Promise<UpdateAgentResult> {
+    return this.call<UpdateAgentResult>(
+      AGENT_MANAGER_TOOLS.updateAgent,
+      await this.placed(update),
+    );
   }
 
   /**
@@ -217,9 +328,9 @@ export class AgentManagerClient {
    * (`mode: commit`, giantswarm/agent-manager#24). Offered only when `get_info`
    * reports the `commit` capability.
    */
-  commitUpdateAgent(update: AgentUpdate): Promise<CommitAgentResult> {
+  async commitUpdateAgent(update: AgentUpdate): Promise<CommitAgentResult> {
     return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...update,
+      ...(await this.placed(update)),
       mode: 'commit',
     });
   }
@@ -231,11 +342,11 @@ export class AgentManagerClient {
    * commit would, such as a release whose file is not in agent-manager's
    * directory.
    */
-  dryRunCommitUpdateAgent(
+  async dryRunCommitUpdateAgent(
     update: AgentUpdate,
   ): Promise<UpdateAgentCommitDryRun> {
     return this.call<UpdateAgentCommitDryRun>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...update,
+      ...(await this.placed(update)),
       mode: 'commit',
       dryRun: true,
     });
@@ -247,11 +358,14 @@ export class AgentManagerClient {
    * when nothing else references it. Never with `force`: a GitOps-owned or
    * suspended release is agent-manager's refusal to show, not ours to override.
    */
-  deleteAgent(namespace: string, name: string): Promise<DeleteAgentResult> {
-    return this.call<DeleteAgentResult>(AGENT_MANAGER_TOOLS.deleteAgent, {
-      namespace,
-      name,
-    });
+  async deleteAgent(
+    namespace: string,
+    name: string,
+  ): Promise<DeleteAgentResult> {
+    return this.call<DeleteAgentResult>(
+      AGENT_MANAGER_TOOLS.deleteAgent,
+      await this.placed({ namespace, name }),
+    );
   }
 
   /**
@@ -259,13 +373,12 @@ export class AgentManagerClient {
    * request instead (`mode: commit`, giantswarm/agent-manager#24). Offered only
    * when `get_info` reports the `commit` capability.
    */
-  commitDeleteAgent(
+  async commitDeleteAgent(
     namespace: string,
     name: string,
   ): Promise<CommitAgentResult> {
     return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.deleteAgent, {
-      namespace,
-      name,
+      ...(await this.placed({ namespace, name })),
       mode: 'commit',
     });
   }
@@ -283,7 +396,7 @@ export class AgentManagerClient {
     const result = await this.call<StartSessionResult>(
       AGENT_MANAGER_TOOLS.startSession,
       {
-        namespace: request.namespace,
+        ...(await this.agentPlace(request.namespace)),
         name: request.name,
         ...(request.message ? { message: request.message } : {}),
         requestId: request.requestId,
@@ -320,27 +433,69 @@ export class AgentManagerClient {
   }
 
   /**
-   * One organization, by its parent namespace and name, and what a delete
-   * would erase. agent-manager answers the organization's fields and
-   * `erases` side by side.
+   * One organization, by its name, and what a delete would erase.
+   * agent-manager answers the organization's fields and `erases` side by
+   * side.
    */
-  async getOrganization(
-    parent: string,
-    name: string,
-  ): Promise<OrganizationDetails> {
+  async getOrganization(name: string): Promise<OrganizationDetails> {
     const { erases, ...organization } = await this.call<
-      AgentPlatformOrganization & { erases?: OrganizationErasure }
-    >(AGENT_MANAGER_TOOLS.getOrganization, { namespace: parent, name });
-    return { organization, ...(erases ? { erases } : {}) };
+      OrganizationSummary & { erases?: OrganizationErasure }
+    >(AGENT_MANAGER_TOOLS.getOrganization, { name });
+    return {
+      organization,
+      ...(erases ? { erases: erasureOf(erases) } : {}),
+    };
+  }
+
+  /**
+   * Creates an organization as the person: one `Organization` with the
+   * Agent Platform on and its admins in `spec.admins`. agent-manager writes
+   * no RoleBinding and does not wait for the operator.
+   */
+  createOrganization(
+    request: OrganizationCreateRequest,
+  ): Promise<OrganizationCreateResult> {
+    return this.call<OrganizationCreateResult>(
+      AGENT_MANAGER_TOOLS.createOrganization,
+      {
+        name: request.name,
+        ...(request.displayName ? { displayName: request.displayName } : {}),
+        ...(request.adminGroups?.length
+          ? { adminGroups: request.adminGroups }
+          : {}),
+        ...(request.adminUsers?.length
+          ? { adminUsers: request.adminUsers }
+          : {}),
+        ...modeArgument(request.mode),
+      },
+    );
+  }
+
+  /**
+   * Changes an organization's admins as the person: each kind given
+   * replaces that kind of `spec.admins`, `[]` removes them, and a kind left
+   * out stays.
+   */
+  updateOrganizationAdmins(
+    request: OrganizationAdminsUpdate,
+  ): Promise<OrganizationUpdateResult> {
+    return this.call<OrganizationUpdateResult>(
+      AGENT_MANAGER_TOOLS.updateOrganization,
+      {
+        name: request.name,
+        ...(request.adminGroups ? { adminGroups: request.adminGroups } : {}),
+        ...(request.adminUsers ? { adminUsers: request.adminUsers } : {}),
+        ...(request.mode ? { mode: request.mode } : {}),
+      },
+    );
   }
 
   /**
    * Deletes an organization as the person. Without `confirm` it opens the
    * pull request that removes it from git (`mode: commit`); with `confirm`
-   * (`parent/name`, as typed) it erases it.
+   * (its name, as typed) it erases it.
    */
   deleteOrganization(request: {
-    parent: string;
     name: string;
     confirm?: string;
     mode?: 'commit';
@@ -348,7 +503,6 @@ export class AgentManagerClient {
     return this.call<OrganizationDeleteResult>(
       AGENT_MANAGER_TOOLS.deleteOrganization,
       {
-        namespace: request.parent,
         name: request.name,
         ...(request.confirm ? { confirm: request.confirm } : {}),
         ...(request.mode ? { mode: request.mode } : {}),
@@ -356,18 +510,27 @@ export class AgentManagerClient {
     );
   }
 
-  /** An organization's members: groups first, each with its role. */
+  /**
+   * An organization's members, by the organization's name: groups first,
+   * each with its role.
+   */
   async listOrganizationMembers(
-    namespace: string,
+    organization: string,
   ): Promise<OrganizationMembers> {
     const result = await this.call<Partial<OrganizationMembers>>(
       AGENT_MANAGER_TOOLS.listOrganizationMembers,
-      { namespace },
+      { organization },
     );
-    return { namespace, members: result.members ?? [] };
+    return {
+      organization: result.organization ?? organization,
+      members: result.members ?? [],
+    };
   }
 
-  /** Binds a group (offered first) or a person to a role, as the person. */
+  /**
+   * Binds a group (offered first) or a person to a role in an organization,
+   * by its name, as the person.
+   */
   addOrganizationMember(request: MemberRequest): Promise<MemberResult> {
     return this.call<MemberResult>(AGENT_MANAGER_TOOLS.addOrganizationMember, {
       ...request,
@@ -375,9 +538,9 @@ export class AgentManagerClient {
   }
 
   /**
-   * Unbinds a group or a person from a role, as the person. Admission keeps
-   * the last admin of `organization-admins`: that refusal comes back as
-   * agent-manager's error, with the way out in its message.
+   * Unbinds a group or a person from the editor or user role, as the
+   * person. An admin stays one: the admins are the `Organization`'s
+   * `spec.admins`, and agent-manager's `note` says so.
    */
   removeOrganizationMember(request: MemberRequest): Promise<MemberResult> {
     return this.call<MemberResult>(
@@ -386,13 +549,13 @@ export class AgentManagerClient {
     );
   }
 
-  /** An organization's connectors (RemoteMCPServers). */
+  /** An organization's connectors (RemoteMCPServers), by its name. */
   async listOrganizationConnectors(
-    namespace: string,
+    organization: string,
   ): Promise<OrganizationConnector[]> {
     const result = await this.call<{ connectors?: OrganizationConnector[] }>(
       AGENT_MANAGER_TOOLS.listOrganizationConnectors,
-      { namespace },
+      { organization },
     );
     return result.connectors ?? [];
   }
@@ -407,9 +570,10 @@ export class AgentManagerClient {
   ): Promise<CredentialResourceResult> {
     const endpointProblem = modelEndpointProblem(request.endpoint ?? '');
     if (endpointProblem) throw new Error(endpointProblem);
+    const { namespace, organization, ...rest } = request;
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.setOrganizationModel,
-      { ...request },
+      { ...(await this.modelPlace(namespace, organization)), ...rest },
     );
   }
 
@@ -418,15 +582,20 @@ export class AgentManagerClient {
    * deletion as the caller and writes nothing: its answer is whether the
    * caller may delete the model.
    */
-  deleteModel(
+  async deleteModel(
     namespace: string,
     name: string,
-    options: { dryRun?: boolean; mode?: 'commit' } = {},
+    options: {
+      dryRun?: boolean;
+      mode?: 'commit';
+      /** The organization of `namespace`, by its name, when known. */
+      organization?: string;
+    } = {},
   ): Promise<CredentialResourceResult> {
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.deleteOrganizationObject,
       {
-        namespace,
+        ...(await this.modelPlace(namespace, options.organization)),
         name,
         kind: 'model',
         ...(options.dryRun ? { dryRun: true } : {}),
@@ -440,12 +609,13 @@ export class AgentManagerClient {
    * (`replace_organization_credential`): a credential request that writes
    * the Secret only, for every object that reads it.
    */
-  replaceOrganizationCredential(
+  async replaceOrganizationCredential(
     request: OrganizationCredentialReplacement,
   ): Promise<CredentialResourceResult> {
+    const { namespace, organization, ...rest } = request;
     return this.call<CredentialResourceResult>(
       AGENT_MANAGER_TOOLS.replaceOrganizationCredential,
-      { ...request },
+      { ...(await this.modelPlace(namespace, organization)), ...rest },
     );
   }
 }

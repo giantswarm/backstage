@@ -4,7 +4,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import type { AgentManagerModelConfig } from '../agentManager';
 import type {
-  AgentPlatformOrganization,
+  OrganizationSummary,
   ListedOrganization,
   MemberResult,
   OrganizationDeleteResult,
@@ -13,6 +13,8 @@ import type {
   OrganizationMember,
   OrganizationNamespace,
   OrganizationListing,
+  OrganizationCreateResult,
+  OrganizationUpdateResult,
 } from '../organizations';
 
 /**
@@ -63,7 +65,7 @@ export type OrganizationsScenario = {
    * `get_organization`'s organization, as an organizations-admin reads it;
    * without it the call is refused, as for a member.
    */
-  organization?: AgentPlatformOrganization;
+  organization?: OrganizationSummary;
   /**
    * `false`: the person may read `organization` but not manage it
    * (`permissions.manage` false). The listing still carries its summary, so
@@ -76,7 +78,10 @@ export type OrganizationsScenario = {
    * by resource; an organization admin's (all allowed) when left out.
    */
   access?: Partial<
-    Record<'rolebindings' | 'modelconfigs' | 'secrets', boolean>
+    Record<
+      'rolebindings' | 'modelconfigs' | 'secrets' | 'organizations',
+      boolean
+    >
   >;
   /** The same per namespace, over `access`, for the namespaces named. */
   namespaceAccess?: Record<string, OrganizationsScenario['access']>;
@@ -115,6 +120,10 @@ export type OrganizationsScenario = {
   modelError?: string;
   /** What `add_organization_member` fails with. */
   addError?: string;
+  /** What `create_organization` fails with. */
+  createError?: string;
+  /** What `update_organization` fails with. */
+  updateError?: string;
   /**
    * `get_info` reports the `commit` capability: agent-manager opens pull
    * requests on this installation.
@@ -123,6 +132,10 @@ export type OrganizationsScenario = {
   /** `get_info`'s `version`; none, as from a build that is no release. */
   agentManagerVersion?: string;
 };
+
+/** `create_organization`'s `next`: what the operator does after the write. */
+export const CREATED_NEXT =
+  'agent-platform-operator creates the organization namespace and binds spec.admins to agent-platform:admin there';
 
 /** The pull request a content write in mode commit opens. */
 export const CONTENT_PULL_REQUEST = {
@@ -148,20 +161,15 @@ export function listedOrganizations(
   scenario: OrganizationsScenario,
 ): OrganizationListing {
   const managed = scenario.organization;
-  const isManaged = (parent: string, name: string) =>
-    managed?.parent === parent && managed?.name === name;
+  const isManaged = (name: string) => managed?.name === name;
   const manages = scenario.manage ?? true;
   const listed: ListedOrganization[] = (scenario.mine?.organizations ?? []).map(
     organization => {
-      const readable = isManaged(
-        organization.parent,
-        organization.organization,
-      );
+      const readable = isManaged(organization.organization);
       const manage = readable && manages;
       const createAgents = scenario.createAgents?.[organization.namespace];
       return {
         name: organization.organization,
-        parent: organization.parent,
         namespace: organization.namespace,
         ...(readable
           ? {
@@ -179,15 +187,9 @@ export function listedOrganizations(
       };
     },
   );
-  if (
-    managed &&
-    !listed.some(organization =>
-      isManaged(organization.parent, organization.name),
-    )
-  ) {
+  if (managed && !listed.some(organization => isManaged(organization.name))) {
     listed.push({
       name: managed.name,
-      parent: managed.parent,
       displayName: managed.displayName,
       namespace: managed.namespace,
       orphaned: managed.orphaned,
@@ -275,6 +277,58 @@ function requireNoUrlElicitation(
   }
 }
 
+/**
+ * The namespace a call addresses, as agent-manager finds it: `organization`
+ * by its name, from the organizations the scenario lists. With `strict` (the
+ * organization tools) the namespace they once took is refused; with
+ * `optional` (the model tools) no organization is the installation's
+ * `kagent`; otherwise (the agent tools) `namespace` is taken unless it is an
+ * organization's.
+ */
+function namespaceOf(
+  scenario: OrganizationsScenario,
+  args: Record<string, unknown>,
+  how: 'strict' | 'optional' | 'agent',
+): string {
+  const listed = listedOrganizations(scenario).organizations;
+  if (how !== 'agent' && Object.hasOwn(args, 'namespace')) {
+    throw new Error(
+      'invalid_request: unknown argument namespace: pass organization, the name of the Organization',
+    );
+  }
+  if (typeof args.organization === 'string') {
+    const organization = listed.find(
+      candidate => candidate.name === args.organization,
+    );
+    if (!organization) {
+      throw new Error(
+        `not_found: organization ${args.organization} not found; list_organizations lists yours`,
+      );
+    }
+    if (!organization.namespace) {
+      throw new Error(
+        `conflict: organization ${args.organization} is not ready yet: agent-platform-operator has not reported its namespace (the agentPlatform entry of status.namespaces); nothing was written, try again shortly`,
+      );
+    }
+    return organization.namespace;
+  }
+  if (how === 'strict') {
+    throw new Error('invalid_request: organization is required');
+  }
+  if (how === 'optional') {
+    return 'kagent';
+  }
+  const owner = listed.find(
+    candidate => candidate.namespace === args.namespace,
+  );
+  if (owner) {
+    throw new Error(
+      `invalid_request: namespace ${String(args.namespace)} is the namespace of organization ${owner.name}: pass organization "${owner.name}" instead of namespace`,
+    );
+  }
+  return String(args.namespace ?? '');
+}
+
 /** muster's `/installations` and server list with agent-manager on gazelle. */
 export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
   let mineFailures = scenario.mineFailures ?? 0;
@@ -308,9 +362,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           return listedOrganizations(scenario);
         case 'x_agent-manager_get_organization':
           if (scenario.organizationErased) {
-            throw new Error(
-              'not_found: get AgentPlatformOrganization org-acme/payments',
-            );
+            throw new Error('not_found: get Organization payments');
           }
           // agent-manager answers the organization's fields and `erases`
           // side by side.
@@ -320,16 +372,15 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
               ...(scenario.erases ? { erases: scenario.erases } : {}),
             };
           }
-          // A member may not read the AgentPlatformOrganization itself.
+          // A member may not read the Organization itself.
           throw new Error(
-            'forbidden: you may not get agentplatformorganizations in org-acme: agent-platform:organizations-admin grants it',
+            'forbidden: you may not get organizations: agent-platform:organizations-admin grants it',
           );
         case 'x_agent-manager_delete_organization': {
           if (scenario.deleteError) {
             throw new Error(scenario.deleteError);
           }
-          const confirmed =
-            args.confirm === `${String(args.namespace)}/${String(args.name)}`;
+          const confirmed = args.confirm === String(args.name);
           const result: OrganizationDeleteResult = {
             organization: scenario.organization!,
             ...(scenario.erases ? { erases: scenario.erases } : {}),
@@ -351,8 +402,52 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           };
           return result;
         }
+        case 'x_agent-manager_create_organization': {
+          if (scenario.createError) {
+            throw new Error(scenario.createError);
+          }
+          const result: OrganizationCreateResult = {
+            organization: {
+              name: String(args.name),
+              ...(args.displayName
+                ? { displayName: String(args.displayName) }
+                : {}),
+              admins: [
+                ...((args.adminGroups as string[] | undefined) ?? []).map(
+                  group => ({ kind: 'Group', name: group }),
+                ),
+                ...((args.adminUsers as string[] | undefined) ?? []).map(
+                  user => ({ kind: 'User', name: user }),
+                ),
+              ],
+              harnesses: [],
+              workerReplicas: 1,
+            },
+            // In mode commit only the pull request is opened.
+            created: args.mode !== 'commit',
+            next: CREATED_NEXT,
+            ...commitOf(args),
+          };
+          return result;
+        }
+        case 'x_agent-manager_update_organization': {
+          if (scenario.updateError) {
+            throw new Error(scenario.updateError);
+          }
+          const result: OrganizationUpdateResult = {
+            before: scenario.organization,
+            after: scenario.organization,
+            changed: ['admins'],
+            ...commitOf(args),
+          };
+          return result;
+        }
         case 'x_agent-manager_list_organization_members':
-          return { namespace: args.namespace, members: scenario.members ?? [] };
+          namespaceOf(scenario, args, 'strict');
+          return {
+            organization: args.organization,
+            members: scenario.members ?? [],
+          };
         case 'x_agent-manager_add_organization_member':
         case 'x_agent-manager_remove_organization_member': {
           if (
@@ -368,7 +463,8 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
             throw new Error(scenario.addError);
           }
           const result: MemberResult = {
-            namespace: String(args.namespace),
+            organization: String(args.organization),
+            namespace: namespaceOf(scenario, args, 'strict'),
             member: {
               kind: args.group ? 'Group' : 'User',
               name: String(args.group ?? args.user),
@@ -382,21 +478,28 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
         }
         case 'x_agent-manager_list_model_configs':
           return {
-            modelConfigs: scenario.models?.[String(args.namespace)] ?? [],
+            modelConfigs:
+              scenario.models?.[namespaceOf(scenario, args, 'agent')] ?? [],
           };
         case 'x_agent-manager_list_organization_connectors':
-          return { connectors: scenario.connectors ?? [] };
+          namespaceOf(scenario, args, 'strict');
+          return {
+            organization: args.organization,
+            connectors: scenario.connectors ?? [],
+          };
         case 'x_agent-manager_list_egress_policies':
+          namespaceOf(scenario, args, 'agent');
           return { egressPolicies: scenario.egressPolicies ?? [] };
         case 'x_agent-manager_set_organization_model':
           requireNoUrlElicitation(name, args, options);
+          namespaceOf(scenario, args, 'optional');
           if (scenario.modelError) {
             throw new Error(scenario.modelError);
           }
           if (scenario.modelKeyPresent) {
             // A change of a model whose key exists: written at once.
             return {
-              namespace: args.namespace,
+              organization: args.organization,
               kind: 'model',
               name: args.name,
               ...(args.default ? { defaultModel: args.name } : {}),
@@ -413,7 +516,7 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           // A new model: agent-manager prepares a credential request for
           // its missing key and answers its operation id and form link.
           return {
-            namespace: args.namespace,
+            organization: args.organization,
             kind: 'model',
             name: args.name,
             pending: true,
@@ -433,11 +536,12 @@ export function fakeOrganizationsMuster(scenario: OrganizationsScenario) {
           // A new value for one key of a Secret: the operation writes the
           // Secret only.
           requireNoUrlElicitation(name, args, options);
+          namespaceOf(scenario, args, 'optional');
           if (scenario.replaceError) {
             throw new Error(scenario.replaceError);
           }
           return {
-            namespace: args.namespace,
+            organization: args.organization,
             kind: 'credential',
             name: args.secret,
             pending: true,

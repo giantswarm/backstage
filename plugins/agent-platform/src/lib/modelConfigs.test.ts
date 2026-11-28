@@ -23,7 +23,7 @@ import { organizationDirectory } from './organizations';
 // The organization agent-manager names `org-acme` as; the namespace's name
 // says nothing.
 const directory = organizationDirectory([
-  { namespace: 'org-acme', organization: 'acme', parent: 'org-parent' },
+  { namespace: 'org-acme', organization: 'acme' },
 ]);
 
 const CLUSTER = 'gazelle';

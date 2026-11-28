@@ -130,24 +130,23 @@ export const toolchainDetailRouteRef = createSubRouteRef({
 // and who can add them when they belong to none.
 export const organizationsRouteRef = createRouteRef();
 
-// One organization (`/organizations/<installation>/<parent>/<name>`), its
-// tabs below it (Members, Models, Connectors, Egress). An
-// AgentPlatformOrganization is unique by its parent namespace and name on one
-// installation, so all three are in the path; its organization namespace
-// (`agents-<name>-<random>`) is agent-manager's answer, never part of a link.
+// One organization (`/organizations/<installation>/<name>`), with its tabs
+// below: Members, Models, Connectors, Egress. An organization is its
+// cluster-scoped `Organization`, unique by its name on one installation; its
+// organization namespace is agent-manager's answer, never part of a link.
 export const organizationDetailRouteRef = createSubRouteRef({
-  path: '/:installation/:parent/:name',
+  path: '/:installation/:name',
   parent: organizationsRouteRef,
 });
 
 // The Dev Portal's credential form of one organization's request
-// (`/organizations/<installation>/<parent>/<name>/credentials/<operation>`),
+// (`/organizations/<installation>/<name>/credentials/<operation>`),
 // where a model key or a connector credential is entered and never shown
 // back. agent-manager's `credentials.uiURL` names it with the operation's id
 // as the last segment; the Models and Connectors tabs open it with the id
 // agent-manager answers.
 export const organizationCredentialsRouteRef = createSubRouteRef({
-  path: '/:installation/:parent/:name/credentials/:operation',
+  path: '/:installation/:name/credentials/:operation',
   parent: organizationsRouteRef,
 });
 

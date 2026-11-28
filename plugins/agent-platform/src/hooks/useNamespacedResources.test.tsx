@@ -34,9 +34,11 @@ jest.mock('./useAgentManager', () => ({
 }));
 
 const mockGetInfo = jest.fn();
+const mockListOrganizations = jest.fn();
 jest.mock('../apis/AgentManagerClient', () => ({
   AgentManagerClient: jest.fn().mockImplementation(() => ({
     getInfo: () => mockGetInfo(),
+    listOrganizations: () => mockListOrganizations(),
   })),
 }));
 
@@ -135,8 +137,71 @@ describe('useNamespacedResources', () => {
   beforeEach(() => {
     mockFetchResourceList.mockReset();
     mockGetInfo.mockReset();
+    mockListOrganizations.mockReset();
     mockMusterApi = {};
     mockPresence = 'available';
+  });
+
+  it('waits for the person’s organizations, then reads their namespaces, which agent-manager’s managed list and the Agents do not name yet', async () => {
+    // An organization made a moment ago: agent-manager's `managed` does not
+    // name its namespace yet, and it holds no Agent the controller lists.
+    mockGetInfo.mockResolvedValue({
+      namespaces: { default: 'kagent', managed: [] },
+      capabilities: { organizations: true },
+    });
+    let answerListing: (listing: unknown) => void = () => {};
+    mockListOrganizations.mockReturnValue(
+      new Promise(resolve => {
+        answerListing = resolve;
+      }),
+    );
+    namespaces({ kagent: 'read', 'agents-acme': 'read' });
+
+    const { result } = renderNamespaced(['gazelle'], async () => []);
+
+    await waitFor(() => expect(mockListOrganizations).toHaveBeenCalled());
+    expect(result.current.pendingInstallations).toEqual(['gazelle']);
+    expect(listedNamespaces()).toEqual([]);
+
+    answerListing({
+      organizations: [
+        {
+          name: 'acme',
+          namespace: 'agents-acme',
+          permissions: { member: true, createAgents: true },
+        },
+        // Not ready: the operator has not reported its namespace yet.
+        { name: 'fresh', permissions: { manage: true, member: false } },
+      ],
+    });
+    await waitFor(() =>
+      expect(result.current.pendingInstallations).toEqual([]),
+    );
+    expect(listedNamespaces()).toEqual(['kagent', 'agents-acme']);
+    expect(result.current.resources.map(mc => mc.getNamespace())).toEqual([
+      'kagent',
+      'agents-acme',
+    ]);
+  });
+
+  it('reads agent-manager’s other namespaces when the person’s organizations cannot be read', async () => {
+    mockGetInfo.mockResolvedValue({
+      namespaces: { default: 'kagent', managed: ['team-a'] },
+      capabilities: { organizations: true },
+    });
+    mockListOrganizations.mockRejectedValue(
+      new Error('backend_error: the API server did not answer in time'),
+    );
+    namespaces({ kagent: 'read', 'team-a': 'read' });
+
+    const { result } = renderNamespaced(['gazelle']);
+
+    await waitFor(() =>
+      expect(result.current.pendingInstallations).toEqual([]),
+    );
+    expect(mockListOrganizations).toHaveBeenCalled();
+    expect(result.current.unreadInstallations).toEqual([]);
+    expect(listedNamespaces()).toEqual(['kagent', 'team-a']);
   });
 
   it('reads the models of the namespaces a person with a namespaced RoleBinding may read, skipping the refused ones', async () => {

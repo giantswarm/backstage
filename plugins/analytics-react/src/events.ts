@@ -186,8 +186,18 @@ export const portalEvents = defineEvents({
       "A group or a person was added to an Agent Platform organization with a role, on the organization's page, as the signed-in person.",
     attributes: {
       kind: ['group', 'person'],
-      role: ['admin', 'editor', 'user'],
+      role: ['editor', 'user'],
     },
+  },
+  'AgentPlatform.organizationCreated': {
+    description:
+      'An Agent Platform organization was created on the Organizations page, as the signed-in person: agent-manager wrote its Organization, with its admins.',
+    attributes: {},
+  },
+  'AgentPlatform.organizationAdminsChanged': {
+    description:
+      "An Agent Platform organization's admins were changed on its page, as the signed-in person: agent-manager wrote them into its Organization.",
+    attributes: {},
   },
   'AgentPlatform.organizationCredentialSaved': {
     description:

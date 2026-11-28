@@ -23,7 +23,6 @@ export const TEST_ORGANIZATIONS: OrganizationNamespace[] = [
 ].map(organization => ({
   namespace: `org-${organization}`,
   organization,
-  parent: 'org-parent',
 }));
 
 /** `useOrganizationDirectory`'s answer with {@link TEST_ORGANIZATIONS}. */

@@ -1,5 +1,10 @@
-import { useMemo } from 'react';
-import { queryOptions, useQueries, useQuery } from '@tanstack/react-query';
+import { useContext, useMemo } from 'react';
+import {
+  QueryClientContext,
+  queryOptions,
+  useQueries,
+  useQuery,
+} from '@tanstack/react-query';
 import { isAwaitingData } from '@giantswarm/backstage-plugin-ui-react';
 
 import { AgentManagerClient } from '../apis/AgentManagerClient';
@@ -7,7 +12,9 @@ import {
   AGENT_MANAGER_SERVER,
   type AgentManagerInfo,
 } from '../lib/agentManager';
+import type { OrganizationReads } from '../lib/organizations';
 import { musterAgentManagerInfoQueryKey } from '../lib/queryKeys';
+import { organizationsQuery } from './organizationsQuery';
 import { useMusterPluginApi } from './useMusterPluginApi';
 import {
   useMusterServerAvailability,
@@ -23,14 +30,46 @@ import {
 export function useAgentManagerClient(
   installation: string | undefined,
 ): AgentManagerClient | undefined {
-  const musterApi = useMusterPluginApi();
+  const clientOf = useAgentManagerClients();
   return useMemo(
-    () =>
-      musterApi && installation
-        ? new AgentManagerClient(musterApi, installation)
-        : undefined,
-    [musterApi, installation],
+    () => (clientOf && installation ? clientOf(installation) : undefined),
+    [clientOf, installation],
   );
+}
+
+/**
+ * Makes agent-manager clients for any installation, as
+ * {@link useAgentManagerClient} makes one: each tells an organization's
+ * namespace by the cached `get_info` and `list_organizations`, the entries
+ * the organization pages and the directory share. `undefined` without the
+ * muster plugin.
+ */
+export function useAgentManagerClients():
+  ((installation: string) => AgentManagerClient) | undefined {
+  const musterApi = useMusterPluginApi();
+  // Outside a QueryClientProvider (a page header's actions) the client
+  // reads the organizations itself, uncached.
+  const queryClient = useContext(QueryClientContext);
+  return useMemo(() => {
+    if (!musterApi) {
+      return undefined;
+    }
+    return (installation: string) => {
+      const reads: OrganizationReads | undefined = queryClient
+        ? {
+            info: () =>
+              queryClient.fetchQuery(
+                agentManagerInfoQuery(musterApi, installation),
+              ),
+            listing: () =>
+              queryClient.fetchQuery(
+                organizationsQuery(musterApi, installation),
+              ),
+          }
+        : undefined;
+      return new AgentManagerClient(musterApi, installation, reads);
+    };
+  }, [musterApi, queryClient]);
 }
 
 /**
