@@ -25,6 +25,8 @@ import {
 } from '@giantswarm/backstage-plugin-ui-react';
 
 import { useAgentToolset } from '../../hooks/useAgentToolset';
+import { useAgentApproval } from '../../hooks/useAgentApproval';
+import { reportSummary } from '../../lib/agentApproval';
 import { useReachCatalogue } from '../../hooks/useReachCatalogue';
 import { useSkillCatalog } from '../../hooks/useSkillCatalog';
 import { underlyingModelLine } from '../../hooks/useUnderlyingModel';
@@ -325,10 +327,19 @@ function SkillsSection({
 function ConnectorsSection({
   agent,
   isFailing,
+  toolsHref,
 }: {
   agent: Agent;
   isFailing: boolean;
+  toolsHref?: string;
 }) {
+  // The agent's approval settings in one line, the tools themselves on the
+  // Tools tab (tool approval).
+  const approval = useAgentApproval(
+    agent.cluster,
+    agent.getNamespace(),
+    agent.getName(),
+  );
   const classes = useStyles();
   const { declared, isReading, isUnreadable, servers } = useAgentToolset(agent);
   const groups = useReachCatalogue(
@@ -423,6 +434,22 @@ function ConnectorsSection({
       {asksFirst.length > 0 && (
         <Text variant="body-small" color="secondary">
           Asks before every call: {asksFirst.join(', ')}
+        </Text>
+      )}
+      {approval.active && approval.report.status === 'ready' && (
+        <Text variant="body-small" color="secondary">
+          Approval:{' '}
+          {reportSummary(
+            approval.report,
+            approval.notEnforced,
+            approval.pending,
+          )}
+          {toolsHref && (
+            <>
+              {' · '}
+              <Link to={toolsHref}>See each tool</Link>
+            </>
+          )}
         </Text>
       )}
       {subAgents.length > 0 && (
@@ -567,7 +594,11 @@ export function AgentPlainOverview({
         isPlatformOwned={isPlatformOwned}
       />
 
-      <ConnectorsSection agent={agent} isFailing={failure?.field === 'tools'} />
+      <ConnectorsSection
+        agent={agent}
+        isFailing={failure?.field === 'tools'}
+        toolsHref={toolsHref}
+      />
 
       <TechnicalDetailsFoldOut
         defaultExpanded={agent.getReadiness() !== 'ready'}

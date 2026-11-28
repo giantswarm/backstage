@@ -9,6 +9,29 @@ export interface Config {
     serverName?: string;
 
     /**
+     * File holding the portal backend's own projected ServiceAccount token
+     * for muster (audience `muster`), sent beside the person's token to
+     * muster's decision API and sign-in handoff endpoint
+     * (`X-Muster-Approval-Client`): muster takes a person's approval decision
+     * from the portal only with it. Read on every request (the kubelet
+     * rotates it). Defaults to
+     * `/var/run/secrets/muster.giantswarm.io/serviceaccount/token`, where the
+     * Agent Platform chart projects it; `agentlab portal dev` points it at a
+     * token it mints for the lab portal's ServiceAccount.
+     */
+    workloadTokenFile?: string;
+
+    /**
+     * The installation whose muster gets the workload token above: the one
+     * the portal's ServiceAccount belongs to, where the token is valid. No
+     * other muster receives it, so inline approval and the sign-in handoff
+     * work there only. Defaults to the `gs.installations` entry whose
+     * `oidcTokenProvider` is `gs.authProvider` (the home installation), else
+     * the only muster installation.
+     */
+    workloadInstallation?: string;
+
+    /**
      * Overrides of, and additions to, the derived muster installations.
      *
      * The proxy derives one installation per `gs.installations` entry with a
@@ -54,6 +77,15 @@ export interface Config {
        * with no provider name needed.
        */
       authProvider?: string;
+      /**
+       * Where this muster serves its own pages (its approval page and sign-in
+       * start): muster's `muster.oauth.mcpClient.publicUrl`. Needed only when
+       * that is not on the host of `url` (a `url` that reaches muster from
+       * inside the cluster, say): the portal returns a person to the session
+       * from muster's pages only for links there, and otherwise trusts the
+       * origin of `url`. Reported by `GET /installations`.
+       */
+      publicUrl?: string;
       /** Static headers added to every request to this installation. */
       headers?: { [key: string]: string };
       /**

@@ -18,6 +18,8 @@ import type {
 import { sessionExpiredError } from '../installationToken';
 import { MusterUnauthorizedError } from '../musterUnauthorized';
 import type {
+  ApprovalDecisionResult,
+  ApprovalLookup,
   AuthStatusResponse,
   ConnectorNamesResponse,
   FilterCapabilitiesOptions,
@@ -47,7 +49,9 @@ import type {
 } from '../types';
 import {
   authStatusOf,
+  connectorKeyOf,
   connectorNameOf,
+  connectorRefOf,
   connectorPromptsOf,
   connectorResourcesOf,
   executionOf,
@@ -71,6 +75,7 @@ import {
 } from './musterFixtureState';
 import { musterCoreToolHandlers } from './musterCoreTools';
 import { presetsOf, resolveToolset } from './toolsetFixtures';
+import { reportForAgent } from './agentApprovalFixtures';
 
 const coreToolHandlers = new Map(Object.entries(musterCoreToolHandlers));
 
@@ -210,6 +215,8 @@ type Tool = {
   server: string;
   handler: FixtureToolHandler;
   inputSchema?: JsonSchema | ((installation: string) => JsonSchema);
+  /** Whether an installation's release serves it; every one when absent. */
+  servedOn?: (installation: string) => boolean;
 };
 
 /** `*` matches any run of characters, like muster's `filter_tools` pattern. */
@@ -272,11 +279,18 @@ export class MusterFixtureApi implements MusterApi {
   constructor(servers: FixtureMcpServer[]) {
     this.servers = servers.map(server => server.server);
     this.tools = new Map(
-      servers.flatMap(({ server, tools, inputSchemas }) =>
+      servers.flatMap(({ server, tools, inputSchemas, unservedTools }) =>
         Object.entries(tools).map(([tool, handler]) => {
           const name = fixtureToolName(server, tool);
           const inputSchema = inputSchemas?.[tool];
-          return [name, { name, server, handler, inputSchema }] as const;
+          const servedOn = unservedTools
+            ? (installation: string) =>
+                !unservedTools(installation).includes(tool)
+            : undefined;
+          return [
+            name,
+            { name, server, handler, inputSchema, servedOn },
+          ] as const;
         }),
       ),
     );
@@ -316,17 +330,19 @@ export class MusterFixtureApi implements MusterApi {
       const { served: servedTools, workflows } = snapshot;
       catalogue = [
         ...servedTools.values(),
-        ...[...this.tools.values()].map(tool => ({
-          name: tool.name,
-          server: tool.server,
-          kind: 'tool' as const,
-          ...(tool.inputSchema && {
-            inputSchema:
-              typeof tool.inputSchema === 'function'
-                ? tool.inputSchema(installation)
-                : tool.inputSchema,
-          }),
-        })),
+        ...[...this.tools.values()]
+          .filter(tool => tool.servedOn?.(installation) ?? true)
+          .map(tool => ({
+            name: tool.name,
+            server: tool.server,
+            kind: 'tool' as const,
+            ...(tool.inputSchema && {
+              inputSchema:
+                typeof tool.inputSchema === 'function'
+                  ? tool.inputSchema(installation)
+                  : tool.inputSchema,
+            }),
+          })),
         ...workflows
           .filter(workflow => isWorkflowAvailable(workflow, servedTools))
           .map(workflow => workflowToolOf(workflow, servedTools)),
@@ -348,8 +364,14 @@ export class MusterFixtureApi implements MusterApi {
     installation: string | undefined,
     signal: AbortSignal | undefined,
   ): Promise<unknown> {
-    const tool = this.tools.get(name);
-    const target = this.reachable(installation, tool?.server ?? 'muster');
+    const registered = this.tools.get(name);
+    const target = this.reachable(installation, registered?.server ?? 'muster');
+    // A release that does not serve the tool answers as muster does.
+    const tool =
+      registered?.servedOn?.(target) === false ? undefined : registered;
+    if (registered && !tool) {
+      throw new Error(`Tool not found: ${name}`);
+    }
     const handler = tool?.handler ?? coreToolHandlers.get(name);
     if (!handler) {
       const error = new FixtureToolMissingError(name);
@@ -484,8 +506,11 @@ export class MusterFixtureApi implements MusterApi {
   }
 
   async listServers(installation?: string): Promise<McpServerListResponse> {
-    const connectors = this.liveConnectors(this.reachable(installation));
+    const target = this.reachable(installation);
+    const connectors = this.liveConnectors(target);
     return {
+      // As muster reports it beside the servers (tool approval).
+      governance: musterFixtureState().governanceOf(target),
       mcpServers: [
         ...connectors.map(mcpServerRuntimeOf),
         ...this.servers.map(server => ({
@@ -526,10 +551,26 @@ export class MusterFixtureApi implements MusterApi {
     const installation = this.reachable(options.installation);
     const { presets } = this.snapshot(installation);
     const catalogue = this.catalogue(installation);
-    const resolution = options.toolset
-      ? resolveToolset(options.toolset, catalogue, presets)
+    if (options.toolset && options.agentTools) {
+      throw Object.assign(
+        new Error(
+          "pass toolset or agentTools, not both: agentTools.tools is the agent's toolset",
+        ),
+        { status: 422 },
+      );
+    }
+    // An agent's tool list narrows like a toolset and reports its approvals.
+    const selectors = options.agentTools
+      ? options.agentTools.tools.map(item =>
+          typeof item === 'string' ? item : Object.keys(item)[0],
+        )
+      : options.toolset;
+    const resolution = selectors
+      ? resolveToolset(selectors, catalogue, presets)
       : undefined;
-    const scope = resolution?.tools ?? catalogue;
+    const scope = options.agentTools
+      ? this.agentReport(installation, catalogue, options.agentTools)
+      : (resolution?.tools ?? catalogue);
     const needle = options.query?.toLowerCase();
     const all = scope
       .filter(tool => matchesPattern(tool.name, options.pattern))
@@ -552,14 +593,48 @@ export class MusterFixtureApi implements MusterApi {
       filtered_count: all.length,
       truncated,
       tools: items,
-      ...(options.toolset && {
-        toolset: [...options.toolset],
+      ...(options.agentTools && {
+        agentTools: {
+          entries: [...options.agentTools.tools],
+          settings: options.agentTools.tools.filter(
+            item => typeof item !== 'string',
+          ),
+        },
+      }),
+      ...(selectors && {
+        toolset: [...selectors],
         toolset_unmatched: resolution?.unmatched ?? [],
       }),
-      ...((options.includePresets || options.toolset) && {
+      ...((options.includePresets || selectors) && {
         presets: presetsOf(presets),
       }),
     };
+  }
+
+  /**
+   * The catalogue as an agent's tool list sees it (`agentTools`): muster's
+   * agent approvals and, per connector tool, the MCPServer behind it.
+   */
+  private agentReport(
+    installation: string,
+    catalogue: ToolSummary[],
+    agentTools: NonNullable<FilterToolsOptions['agentTools']>,
+  ): ToolSummary[] {
+    const connectors = new Map(
+      this.liveConnectors(installation).map(connector => [
+        connectorKeyOf(connector),
+        connector,
+      ]),
+    );
+    return reportForAgent(
+      catalogue,
+      agentTools,
+      this.snapshot(installation).presets,
+      tool => {
+        const connector = tool.server ? connectors.get(tool.server) : undefined;
+        return connector ? [connectorRefOf(connector, tool)] : undefined;
+      },
+    );
   }
 
   async filterResources(
@@ -744,6 +819,84 @@ export class MusterFixtureApi implements MusterApi {
     const name = typeof server === 'string' ? server : server.app;
     musterFixtureState().signOut(target, name);
     return { status: 'signed_out', message: `Signed out of ${name}.` };
+  }
+
+  /** The fixture muster issues no sign-in handoff: links open as they are. */
+  async requestHandoff(): Promise<string | undefined> {
+    return undefined;
+  }
+
+  /** Decisions taken on the fixture approvals, by link, for this page load. */
+  private readonly approvalDecisions = new Map<
+    string,
+    'approved' | 'declined'
+  >();
+
+  /**
+   * Every approval link shows the same made-up request, pending until it is
+   * decided here.
+   */
+  async getApproval(url: string): Promise<ApprovalLookup> {
+    const id = url.split('/').pop() ?? 'fixture';
+    return {
+      view: {
+        id,
+        status: this.approvalDecisions.get(url) ?? 'pending',
+        heading: 'Approve this action?',
+        message: 'An agent wants to run Merge pull request in GitHub.',
+        tool: {
+          title: 'Merge pull request',
+          name: 'merge_pull_request',
+          exposed: 'x_github_merge_pull_request',
+          kind: 'tool',
+        },
+        connector: { displayName: 'GitHub', server: 'github' },
+        changesData: true,
+        arguments: [
+          {
+            key: 'owner',
+            label: 'Owner',
+            value: '"giantswarm"',
+            type: 'string',
+          },
+          { key: 'pr', label: 'Pr', value: '42', type: 'number' },
+        ],
+        agentSays: 'The checks are green, merging as you asked.',
+        why: { setting: 'ask', source: 'connector' },
+        actsFor: {
+          name: 'guest@example.com',
+          subject: 'guest',
+          issuer: 'https://dex.example.com',
+        },
+        callerKind: 'actor JWT',
+        session: 'a1b2c3d4…',
+        client: 'agent-platform',
+        canonicalArguments: '{"owner":"giantswarm","pr":42}',
+        argumentsHash: '0'.repeat(64),
+        expiresAt: new Date(Date.now() + 5 * 60_000).toISOString(),
+        digest: `fixture-${id}`,
+      },
+    };
+  }
+
+  async decideApproval(
+    url: string,
+    decision: 'approve' | 'decline',
+  ): Promise<ApprovalDecisionResult> {
+    const decided = this.approvalDecisions.get(url);
+    if (decided) {
+      return {
+        refusal: {
+          status: 409,
+          error: 'decided',
+          decided,
+          message: `This request was already ${decided}; this answer changes nothing.`,
+        },
+      };
+    }
+    const status = decision === 'approve' ? 'approved' : 'declined';
+    this.approvalDecisions.set(url, status);
+    return { status };
   }
 }
 

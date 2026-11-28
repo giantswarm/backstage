@@ -26,6 +26,15 @@ export const INSTANCES_EDIT_REASON =
 export const ORGANIZATION_EDIT_REASON =
   "It belongs to its organization's namespace, where it is changed; Muster changes only its own connectors.";
 
+/**
+ * Why Edit and the tool settings are disabled when muster's review says the
+ * person may not update the connector (`connectorAdmin: false`). Who can:
+ * whoever may update MCPServers in muster's namespace; the portal knows no
+ * names, so it says to ask one.
+ */
+export const NO_EDIT_RIGHTS_REASON =
+  "You don't have rights to edit this connector. Ask a connector admin: someone who may update MCP servers in Muster's namespace.";
+
 export const SESSION_EDIT_REASON =
   'Editing needs your Muster session, which is not connected.';
 

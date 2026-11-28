@@ -99,6 +99,25 @@ describe('resolveMusterInstallations', () => {
     });
   });
 
+  it("keeps a configured entry's publicUrl, where muster serves its pages", () => {
+    const { installations } = resolve({
+      ...FLEET,
+      muster: {
+        installations: [
+          {
+            name: 'wombat',
+            url: 'http://muster.muster.svc:8090/mcp',
+            publicUrl: 'https://muster.wombat.example.test',
+          },
+        ],
+      },
+    });
+
+    expect(installations.get('wombat')?.publicUrl).toBe(
+      'https://muster.wombat.example.test',
+    );
+  });
+
   it('adds a configured entry the fleet configuration does not know', () => {
     const { installations, counts } = resolve({
       ...FLEET,

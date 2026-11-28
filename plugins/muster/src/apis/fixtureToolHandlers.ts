@@ -43,6 +43,11 @@ export type FixtureMcpServer = {
     string,
     JsonSchema | ((installation: string) => JsonSchema)
   >;
+  /**
+   * The tools (by their own name) an installation's release of the server
+   * does not serve: absent from its catalogue, `describeTool` and calls.
+   */
+  unservedTools?: (installation: string) => readonly string[];
 };
 
 /**

@@ -12,12 +12,19 @@ import {
 import type { KubeObjectInterface } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import { DISPLAY_NAME_ANNOTATION } from '../../lib/k8s/MCPServer';
-import type { ToolSummary } from '../types';
+import type { ApprovalPreset } from '../../lib/toolApproval';
+import type { MCPServerApproval, ToolSummary } from '../types';
 import {
   connectorToolsOf,
   connectorKeyOf,
   mcpServerObjectOf,
   musterWorkflowObjectOf,
+  FIXTURE_APPROVAL_UNAVAILABLE,
+  fixtureNotEditorText,
+  presetApprovalOf,
+  reviewedApprovalOf,
+  CONNECT_ARGUMENTS,
+  UPDATE_ARGUMENTS,
   musterWorkflowOf,
   servedToolsOf,
   type MusterFixtureConnector,
@@ -74,7 +81,82 @@ const NOT_SPEC = new Set([
   'tags',
   'clientCredentials',
   'suspended',
+  'preset',
 ]);
+
+const APPROVAL_PRESETS = new Set(['recommended', 'allow-all', 'ask-all']);
+
+/**
+ * muster's refusal of arguments a split connector write does not take
+ * (`refuseOtherFields` in `internal/mcpserver/connector_writes.go`): before
+ * anything is written, naming the tool that takes them.
+ */
+function refuseOtherArguments(
+  tool: string,
+  args: Record<string, unknown>,
+  allowed: readonly string[],
+  elsewhere: string,
+): void {
+  const other = Object.keys(args)
+    .filter(key => key !== 'name' && !allowed.includes(key))
+    .sort();
+  if (other.length > 0) {
+    throw connectorToolError(
+      `${tool} does not take ${other.join(', ')}: use ${elsewhere}`,
+      422,
+    );
+  }
+}
+
+/**
+ * The `approval` or `preset` of a connector write, checked as muster's CRD
+ * checks it: a rule of `Allow`, `Ask` or `Block`, each tool `Allow`, `Ask` or
+ * `Block`.
+ */
+function approvalArgOf(
+  args: Record<string, unknown>,
+  /** The connector a preset expands against; none lists no tools yet. */
+  connector: MusterFixtureConnector | undefined,
+): MCPServerApproval | undefined {
+  const preset = args.preset;
+  if (preset !== undefined) {
+    if (typeof preset !== 'string' || !APPROVAL_PRESETS.has(preset)) {
+      throw connectorToolError(
+        `Invalid preset ${JSON.stringify(preset)}: use recommended, allow-all or ask-all`,
+        422,
+      );
+    }
+    if (args.approval !== undefined) {
+      throw connectorToolError('pass either preset or approval, not both', 422);
+    }
+    if (!connector) {
+      return { rule: preset === 'allow-all' ? 'Allow' : 'Ask' };
+    }
+    return presetApprovalOf(preset as ApprovalPreset, connector);
+  }
+  const approval = args.approval as MCPServerApproval | undefined;
+  if (approval === undefined) {
+    return undefined;
+  }
+  if (
+    approval.rule !== undefined &&
+    !['Allow', 'Ask', 'Block'].includes(approval.rule)
+  ) {
+    throw connectorToolError(
+      `Invalid approval: rule must be Allow, Ask or Block, not ${approval.rule}`,
+      422,
+    );
+  }
+  for (const [tool, value] of Object.entries(approval.tools ?? {})) {
+    if (!['Allow', 'Ask', 'Block'].includes(value)) {
+      throw connectorToolError(
+        `Invalid approval: ${tool} must be Allow, Ask or Block, not ${value}`,
+        422,
+      );
+    }
+  }
+  return { ...approval };
+}
 
 type StoredConnector = {
   /** The record the reads map; `state` is the settled or seeded one. */
@@ -207,13 +289,29 @@ export class MusterFixtureState {
         ...connectors,
         ...inInstallation(this.data.organizationConnectors ?? [], installation),
       ];
+      // One connector starts reviewed, so the Tools tab and the edit's Test &
+      // Tools step show settings, a blocked tool and a New one.
+      const reviewedOwn = connectors.find(
+        connector => !connector.namespace && connector.state === 'Connected',
+      );
+      // And every organization's own connector, which the guest is no admin
+      // of: an agent of the organization shows an exception only its admins
+      // grant (tool approval).
+      const isReviewed = (connector: MusterFixtureConnector) =>
+        connector === reviewedOwn ||
+        (Boolean(connector.namespace) && connector.state === 'Connected');
       store = {
         connectors: new Map(
           served.map(connector => [
             connectorKeyOf(connector),
             {
               connector,
-              spec: { ...mcpServerObjectOf(connector).spec },
+              spec: {
+                ...mcpServerObjectOf(connector).spec,
+                ...(isReviewed(connector) && {
+                  approval: reviewedApprovalOf(connector),
+                }),
+              },
               tags: [],
               suspended: connector.state === 'Stopped',
               signedIn: false,
@@ -295,10 +393,21 @@ export class MusterFixtureState {
     state: ConnectorState,
   ): MusterFixtureConnector {
     const toolPrefix = stringOf(stored.spec.toolPrefix);
+    const approval = stored.spec.approval as MCPServerApproval | undefined;
     return {
       ...stored.connector,
       state,
       ...(toolPrefix && toolPrefix !== stored.connector.name && { toolPrefix }),
+      ...(approval && { approval }),
+      generation: stored.generation,
+      // The second installation's muster has no shared store: what asks is
+      // refused there, which the pages show as a warning.
+      ...(stored.connector.installation ===
+        this.data.installations[1]?.name && {
+        approvalUnavailable: FIXTURE_APPROVAL_UNAVAILABLE,
+        // ... and the guest is no editor of muster's namespace there.
+        notEditor: true,
+      }),
     };
   }
 
@@ -406,6 +515,16 @@ export class MusterFixtureState {
     return stored;
   }
 
+  /**
+   * The governance mode muster reports on `core_mcpserver_list`: the data
+   * set's second installation is governed, every other trusted.
+   */
+  governanceOf(installation: string): 'trusted' | 'governed' {
+    return installation === this.data.installations[1]?.name
+      ? 'governed'
+      : 'trusted';
+  }
+
   /** `core_mcpserver_create`. */
   create(installation: string, args: Record<string, unknown>): string {
     const name = stringOf(args.name)?.trim();
@@ -446,6 +565,18 @@ export class MusterFixtureState {
       generation: 1,
       observedGeneration: 1,
     };
+    // As muster: a create needs approval settings, and its preset stores
+    // the preset's rule alone, since the connector lists no tools yet
+    // (`approvalFromArgs(args, true, noTools)`); the Test & Tools step
+    // writes each tool's setting.
+    const approval = approvalArgOf(args, undefined);
+    if (!approval) {
+      throw connectorToolError(
+        "core_mcpserver_create needs the server's approval settings: pass preset (recommended, allow-all, ask-all) or approval {rule, tools}",
+        422,
+      );
+    }
+    stored.spec.approval = approval;
     // muster starts a server with `autoStart` as it registers it; one
     // without waits for a start.
     if (args.autoStart === true) {
@@ -457,19 +588,54 @@ export class MusterFixtureState {
   }
 
   /**
-   * `core_mcpserver_update`: a merge onto the stored definition, by muster's
-   * rules (`mergeOntoExisting` in `lib/mcpServerDefinition.ts`): an omitted
-   * field keeps its value, `autoStart` is overwritten, an empty description
-   * keeps the stored one, an empty display name removes it, and `suspended`
-   * changes only when given. A connector that was started connects again;
-   * one never started stays stopped.
+   * `core_mcpserver_update`: what changes no target (description, display
+   * name, tags, autoStart, timeout, suspended, restart). Refuses every other
+   * argument before it writes, naming the tool that takes it, as muster does.
    */
   update(installation: string, args: Record<string, unknown>): string {
+    refuseOtherArguments(
+      'core_mcpserver_update',
+      args,
+      UPDATE_ARGUMENTS,
+      'core_mcpserver_connect or core_mcpserver_set_approval',
+    );
+    return this.write(installation, args, { autoStart: true });
+  }
+
+  /**
+   * `core_mcpserver_connect`: where the server is and how muster reaches it
+   * (type, URL, sign-in, client, headers, ...). Refuses every other argument
+   * before it writes, as muster does.
+   */
+  connectWrite(installation: string, args: Record<string, unknown>): string {
+    refuseOtherArguments(
+      'core_mcpserver_connect',
+      args,
+      CONNECT_ARGUMENTS,
+      'core_mcpserver_update or core_mcpserver_set_approval',
+    );
+    return this.write(installation, args);
+  }
+
+  /**
+   * The write of `update` and `connect`: a merge onto the stored definition,
+   * by muster's rules (`mergeOntoExisting` in `lib/mcpServerDefinition.ts`):
+   * an omitted field keeps its value, `autoStart` is overwritten, an empty
+   * description keeps the stored one, an empty display name removes it, and
+   * `suspended` changes only when given. A connector that was started
+   * connects again; one never started stays stopped.
+   */
+  private write(
+    installation: string,
+    args: Record<string, unknown>,
+    { autoStart = false }: { autoStart?: boolean } = {},
+  ): string {
     const stored = this.find(
       installation,
       args.name,
       'Failed to update MCP server',
     );
+    this.refuseNonEditor(stored);
     const wasStarted = this.stateOf(stored, this.now()) !== 'Stopped';
     const previous = JSON.stringify([stored.spec.url, authOf(stored.spec)]);
     const spec = { ...stored.spec };
@@ -482,7 +648,9 @@ export class MusterFixtureState {
       }
       spec[key] = value;
     }
-    if (args.autoStart === undefined) {
+    // The update's: there an omitted `autoStart` reads false; a connect
+    // does not take it and keeps it.
+    if (autoStart && args.autoStart === undefined) {
       delete spec.autoStart;
     }
     if (authOf(spec) === undefined) {
@@ -521,6 +689,60 @@ export class MusterFixtureState {
     return `MCP server '${stored.connector.name}' updated successfully`;
   }
 
+  /**
+   * `core_mcpserver_set_approval`: the connector's tool approval, explicit
+   * (`approval`) or a preset written out for its tools. Applies at once, as
+   * muster reads the settings on every listing and call.
+   */
+  setApproval(installation: string, args: Record<string, unknown>): string {
+    const stored = this.find(
+      installation,
+      args.name,
+      'Failed to set the approval of MCP server',
+    );
+    this.refuseNonEditor(stored);
+    // muster's precondition: refused when the server changed since the
+    // caller read its generation.
+    const { expectedGeneration, ...rest } = args;
+    if (
+      expectedGeneration !== undefined &&
+      expectedGeneration !== stored.generation
+    ) {
+      throw connectorToolError(
+        `conflict: MCP server '${stored.connector.name}' changed since it was read (generation ${stored.generation} now, expectedGeneration ${String(expectedGeneration)}): read it again with core_mcpserver_get and apply the change to what it holds now`,
+        409,
+      );
+    }
+    const approval = approvalArgOf(
+      rest,
+      this.viewOf(stored, this.stateOf(stored, this.now())),
+    );
+    if (!approval) {
+      throw connectorToolError(
+        'approval or preset is required (presets: recommended, allow-all, ask-all)',
+        422,
+      );
+    }
+    stored.spec = { ...stored.spec, approval };
+    this.written(stored);
+    stored.observedGeneration = stored.generation;
+    this.changed(installation);
+    return `Approval of MCP server '${stored.connector.name}' updated successfully`;
+  }
+
+  /**
+   * A write as the person is refused where they may not update MCPServers:
+   * muster passes the apiserver's RBAC text on.
+   */
+  private refuseNonEditor(stored: StoredConnector) {
+    if (this.viewOf(stored, 'Stopped').notEditor) {
+      throw connectorToolError(
+        `Failed to update MCP server: ${fixtureNotEditorText(stored.connector.name)}`,
+        403,
+      );
+    }
+  }
+
   /** `core_mcpserver_delete`. */
   delete(installation: string, args: Record<string, unknown>): string {
     const stored = this.find(
@@ -528,6 +750,7 @@ export class MusterFixtureState {
       args.name,
       'Failed to delete MCP server',
     );
+    this.refuseNonEditor(stored);
     this.storeOf(installation).connectors.delete(
       connectorKeyOf(stored.connector),
     );

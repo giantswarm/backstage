@@ -3,7 +3,12 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react';
 
 import {
+  APPROVAL_AFTER_SAVE_PREFIX,
+  AgentManagerError,
   AgentManagerNotConnectedError,
+  agentGenerationOf,
+  type AgentManagerAgent,
+  type AgentApprovalChange,
   type AgentUpdate,
   type CommitAgentResult,
   type UpdateAgentResult,
@@ -31,9 +36,73 @@ export type AgentWriteFailure = CreateAgentFailure;
  * know the generation the Agent will land on — which is why it is read here
  * rather than taken from the result.
  */
-export type AgentUpdateOutcome = UpdateAgentResult & {
+export type AgentUpdateOutcome = Partial<UpdateAgentResult> & {
   fromGeneration?: number;
 };
+
+/**
+ * An edit: the update, and the approval settings `set_agent_approval`
+ * writes after it (tool approval; the only write of an `Allow` over a
+ * connector's `Ask`).
+ */
+export type AgentSave = AgentUpdate & { approval?: AgentApprovalChange };
+
+/** Whether an update carries a field beyond the agent's identity. */
+function carriesFields(update: AgentUpdate): boolean {
+  return Object.keys(update).some(key => key !== 'namespace' && key !== 'name');
+}
+
+/**
+ * The precondition of the approval write: the generation the update before
+ * it wrote, else the one the edit was composed from.
+ */
+function withGeneration(
+  approval: AgentApprovalChange,
+  update: AgentUpdate,
+  result: { agent?: Pick<AgentManagerAgent, 'generation'> } | undefined,
+): AgentApprovalChange {
+  if (update.expectedGeneration === undefined) {
+    return approval;
+  }
+  const generation = result
+    ? agentGenerationOf(result.agent)
+    : update.expectedGeneration;
+  return generation === undefined
+    ? approval
+    : { ...approval, expectedGeneration: generation };
+}
+
+/** The approval settings a change names, in a sentence. */
+function approvalChangeLine(approval: AgentApprovalChange): string {
+  const parts = Object.entries(approval.settings ?? {}).map(
+    ([selector, setting]) =>
+      `${selector.replace(/^[a-z]+:/, '')} ${setting || 'without a setting'}`,
+  );
+  if (approval.default !== undefined) {
+    parts.push(`default ${approval.default || 'removed'}`);
+  }
+  return parts.join(', ');
+}
+
+/**
+ * A refusal of `set_agent_approval` after the rest of the edit landed:
+ * says what was saved and which settings were not, in agent-manager's code.
+ */
+function approvalAfterSaveError(
+  error: unknown,
+  approval: AgentApprovalChange,
+): Error {
+  if (error instanceof AgentManagerError) {
+    return new AgentManagerError(
+      error.code,
+      `${APPROVAL_AFTER_SAVE_PREFIX} Not saved (set_agent_approval refused it): ${approvalChangeLine(
+        approval,
+      )}. ${error.message} Reload the agent before trying again.`,
+      { cause: error },
+    );
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
 
 export type UpdateAgentState = {
   /**
@@ -41,13 +110,13 @@ export type UpdateAgentState = {
    * validates against the chart schema and writes. With `refreshSkills`, every
    * git skill is re-pinned to its default-branch head and nothing else moves.
    */
-  update: (update: AgentUpdate) => Promise<AgentUpdateOutcome>;
+  update: (update: AgentSave) => Promise<AgentUpdateOutcome>;
   isUpdating: boolean;
   /**
    * `update_agent` with `mode: commit` (giantswarm/agent-manager#24): a pull
    * request instead of a live write. Offered only under the capability gate.
    */
-  commit: (update: AgentUpdate) => Promise<CommitAgentResult>;
+  commit: (update: AgentSave) => Promise<CommitAgentResult>;
   isCommitting: boolean;
   failure: AgentWriteFailure | undefined;
   reset: () => void;
@@ -117,7 +186,10 @@ export function useUpdateAgent(
       name: 'AgentPlatform.agentUpdated',
       attributes: { mode: 'apply', change: changeOf(update) },
     }),
-    mutationFn: async (update: AgentUpdate): Promise<AgentUpdateOutcome> => {
+    mutationFn: async ({
+      approval,
+      ...update
+    }: AgentSave): Promise<AgentUpdateOutcome> => {
       const agentManager = requireClient();
       // Strictly before the write, so a generation past it can only be one the
       // write caused. Best effort: an installation that cannot answer this
@@ -133,18 +205,98 @@ export function useUpdateAgent(
       } catch {
         fromGeneration = undefined;
       }
-      const result = await agentManager.updateAgent(update);
+      const result = carriesFields(update)
+        ? await agentManager.updateAgent(update)
+        : undefined;
+      if (approval) {
+        try {
+          // After a write whose answer carries no generation, read it again:
+          // the settings must not go out unconditioned over a save by someone
+          // else in between.
+          let generation = agentGenerationOf(result?.agent);
+          if (
+            result &&
+            update.expectedGeneration !== undefined &&
+            generation === undefined
+          ) {
+            const after = await agentManager.getAgentStatus(
+              update.namespace,
+              update.name,
+            );
+            generation = agentGenerationOf(after.agent);
+            if (generation === undefined) {
+              throw new AgentManagerError(
+                'conflict',
+                "The agent's generation could not be read after the write, so the settings were not written over a possible change by someone else.",
+              );
+            }
+          }
+          const set = await agentManager.setAgentApproval(
+            update.namespace,
+            update.name,
+            withGeneration(
+              approval,
+              update,
+              generation === undefined ? result : { agent: { generation } },
+            ),
+          );
+          return {
+            ...result,
+            dropped: [...(result?.dropped ?? []), ...(set.dropped ?? [])],
+            warnings: [...(result?.warnings ?? []), ...(set.warnings ?? [])],
+            ...((result?.sessionsUpdated === false ||
+              set.sessionsUpdated === false) && { sessionsUpdated: false }),
+            fromGeneration,
+          };
+        } catch (error) {
+          throw result ? approvalAfterSaveError(error, approval) : error;
+        }
+      }
       return { ...result, fromGeneration };
     },
     onSuccess: (_result, update) => invalidateReads(update),
+    // A refusal after a write landed leaves the agent changed: read it again,
+    // so the next look at it is not the one from before the save.
+    onError: (_error, update) => invalidateReads(update),
   });
   const commitMutation = useTrackedMutation({
     event: (_result, update) => ({
       name: 'AgentPlatform.agentUpdated',
       attributes: { mode: 'commit', change: changeOf(update) },
     }),
-    mutationFn: (update: AgentUpdate) =>
-      requireClient().commitUpdateAgent(update),
+    mutationFn: async ({
+      approval,
+      ...update
+    }: AgentSave): Promise<CommitAgentResult> => {
+      const agentManager = requireClient();
+      const result = carriesFields(update)
+        ? await agentManager.commitUpdateAgent(update)
+        : undefined;
+      if (!approval) {
+        return result ?? {};
+      }
+      let set: CommitAgentResult;
+      try {
+        set = await agentManager.setAgentApproval(
+          update.namespace,
+          update.name,
+          // A pull request moves no generation until merged.
+          withGeneration(approval, update, undefined),
+          'commit',
+        );
+      } catch (error) {
+        throw result ? approvalAfterSaveError(error, approval) : error;
+      }
+      return result
+        ? {
+            ...set,
+            earlier: [
+              ...(result.earlier ?? []),
+              { ...result, earlier: undefined },
+            ],
+          }
+        : set;
+    },
   });
 
   const { mutateAsync: update, reset: resetUpdate } = mutation;

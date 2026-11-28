@@ -16,6 +16,12 @@ export {
   useToolArgumentSupport,
   useToolTakesArgument,
 } from './useToolTakesArgument';
+export {
+  connectToolSchema,
+  useConnectorEditWrite,
+  useEditArgumentSupport,
+  writeConnectorEdit,
+} from './connectorEdit';
 export type { ConnectorListPaths } from './useConnectorListPaths';
 export { useWorkflowPageLinks } from './useWorkflowPageLinks';
 export type { WorkflowPageLinks } from './useWorkflowPageLinks';

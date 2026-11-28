@@ -1,4 +1,5 @@
 import { useConnectorAccess } from '../../hooks/useConnectorAccess';
+import { connectorAdminOf } from '../../lib/toolApproval';
 import { familyAccess, instanceAccess } from '../../lib/connectorAccess';
 import { connectorAuthName } from '../../lib/connectorKey';
 import { useServerPageLinks } from '../shared/useServerPageLinks';
@@ -133,7 +134,11 @@ import { ConnectorLogo } from '../ConnectorLogo';
 import { ConnectorUsageTab } from './ConnectorUsageTab';
 import { useConnectorUsage } from './hooks/useConnectorUsage';
 import { CONNECTOR_USAGE_DAYS, rowServers } from './utils/connectorUsage';
-import { connectorEditBlock, SESSION_ACTIONS_REASON } from './connectorEdit';
+import {
+  connectorEditBlock,
+  NO_EDIT_RIGHTS_REASON,
+  SESSION_ACTIONS_REASON,
+} from './connectorEdit';
 
 /** How long a success toast stays, as on the platform's other deletes. */
 const TOAST_TIMEOUT_MS = 6000;
@@ -377,6 +382,30 @@ function ConnectorPageContent({
       ? wizardLinks('connect', { name: singular.getName(), installation })
       : undefined;
   const gitOpsManaged = singular ? isGitOpsManaged(singular) : false;
+  // Tool approval: its settings change at the edit's Test & Tools step, and
+  // the tools it blocks are listed although muster hides them.
+  const settingsHref =
+    singular && !editBlock
+      ? wizardLinks('verify', { name: singular.getName(), installation })
+      : undefined;
+  // Whether this person may change the connector: muster's own review as
+  // them (`connectorAdmin` on each of its tools, a SelfSubjectAccessReview
+  // for `update` on MCPServers in its namespace), which is the check the
+  // save is refused on. Unknown (no tools listed yet, an older muster) leaves
+  // Edit enabled; a refused save then says why.
+  const canEdit = connectorAdminOf(tools.tools ?? []);
+  const noEditRights = canEdit === false;
+  const blockedTools = useMemo(() => {
+    const approval = singular?.getApproval();
+    if (!singular || !approval?.tools) {
+      return undefined;
+    }
+    const prefix = singular.getToolNamePrefix();
+    return Object.entries(approval.tools)
+      .filter(([, setting]) => setting === 'Block')
+      .map(([tool]) => `${prefix}_${tool}`)
+      .sort();
+  }, [singular]);
 
   const [action, setAction] = useState<LiveAction | undefined>();
   const [actionOpen, setActionOpen] = useState(false);
@@ -400,6 +429,19 @@ function ConnectorPageContent({
       id: 'edit-as-json',
       label: 'Edit as JSON…',
       onAction: () => setJsonOpen(true),
+    });
+  }
+  // Offered whenever the connector can be edited, enabled unless muster said
+  // the person may not (as Edit is): where that is not known yet (tools
+  // loading, none listed, an older muster) a refused save explains itself, and
+  // the settings step says when muster takes no tool settings.
+  if (singular && settingsHref) {
+    menu.push({
+      id: 'change-tool-settings',
+      label: 'Change tool settings',
+      href: noEditRights ? undefined : settingsHref,
+      isDisabled: noEditRights,
+      ...(noEditRights && { disabledReason: NO_EDIT_RIGHTS_REASON }),
     });
   }
   if (canSignOut) {
@@ -689,23 +731,31 @@ function ConnectorPageContent({
   // has neither.
   let editAction: ReactNode;
   if (row.kind !== 'core') {
-    editAction = editHref ? (
-      <Button variant="secondary" onPress={() => navigate(editHref)}>
-        Edit
-      </Button>
-    ) : (
-      <DisabledAction
-        reason={
-          editBlock?.reason ?? 'The connector wizard is not available here.'
-        }
-      >
-        {describedBy => (
-          <Button variant="secondary" isDisabled aria-describedby={describedBy}>
-            Edit
-          </Button>
-        )}
-      </DisabledAction>
-    );
+    editAction =
+      editHref && !noEditRights ? (
+        <Button variant="secondary" onPress={() => navigate(editHref)}>
+          Edit
+        </Button>
+      ) : (
+        <DisabledAction
+          reason={
+            noEditRights
+              ? NO_EDIT_RIGHTS_REASON
+              : (editBlock?.reason ??
+                'The connector wizard is not available here.')
+          }
+        >
+          {describedBy => (
+            <Button
+              variant="secondary"
+              isDisabled
+              aria-describedby={describedBy}
+            >
+              Edit
+            </Button>
+          )}
+        </DisabledAction>
+      );
   }
   let menuAction: ReactNode;
   if (menu.length > 0) {
@@ -773,6 +823,10 @@ function ConnectorPageContent({
                   sessionGate={sessionGate}
                   signInGate={signInGate}
                   searchState={toolSearch}
+                  blockedTools={blockedTools}
+                  settingsHref={settingsHref}
+                  settingsInGit={gitOpsManaged}
+                  newToolsRule={singular?.getApproval()?.rule}
                 />
               }
             />

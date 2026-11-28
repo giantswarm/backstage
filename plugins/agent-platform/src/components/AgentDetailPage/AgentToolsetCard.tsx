@@ -4,6 +4,9 @@ import { Alert, Flex, Text } from '@backstage/ui';
 import { makeStyles } from '@material-ui/core';
 import { Agent } from '@giantswarm/backstage-plugin-kubernetes-react';
 import {
+  ApprovalBadge,
+  approvalSourceLabel,
+  reportedSetting,
   serverPageResolver,
   ServerSignIn,
   useConnectorLabels,
@@ -22,6 +25,11 @@ import { useMusterPluginApi } from '../../hooks/useMusterPluginApi';
 import { useMusterServers } from '../../hooks/useMusterServers';
 import { useMusterToolCatalogue } from '../../hooks/useMusterToolCatalogue';
 import { useToolsetResolution } from '../../hooks/useToolsetResolution';
+import { useAgentApproval } from '../../hooks/useAgentApproval';
+import {
+  APPROVAL_NOT_ENFORCED_NOTE,
+  reportSummary,
+} from '../../lib/agentApproval';
 import {
   buildCatalogue,
   parseSelector,
@@ -178,6 +186,10 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
   );
   const shape = toolsetShape(selectors);
   const { info: managerInfo } = useAgentManagerInfo(installation);
+  // The agent's approval of each tool (tool approval), when agent-manager
+  // reports its settings: a column of the list below.
+  const approval = useAgentApproval(installation, namespace, agent.getName());
+  const approvalReady = approval.active && approval.report.status === 'ready';
   const isBound = managerInfo?.capabilities?.toolsetBound === true;
 
   const musterApi = useMusterPluginApi();
@@ -348,10 +360,52 @@ export function AgentToolsetCard({ agent }: { agent: Agent }) {
             ? ` (${resolution.tools.length})`
             : ''}
         </Text>
+        {approvalReady && (
+          <Text variant="body-small">
+            Approval for this agent:{' '}
+            {reportSummary(
+              approval.report,
+              approval.notEnforced,
+              approval.pending,
+            )}
+            .
+          </Text>
+        )}
+        {approval.active && approval.notEnforced && (
+          <Alert
+            status="warning"
+            title="Approval settings not enforced"
+            description={APPROVAL_NOT_ENFORCED_NOTE}
+          />
+        )}
         <ToolsetResolutionList
           resolution={resolution}
           servers={servers}
           toolHref={toolHref}
+          trailingOf={
+            approvalReady
+              ? tool => {
+                  const reported = approval.byName.get(tool.name)?.approval;
+                  if (!reported) {
+                    return null;
+                  }
+                  return (
+                    <span
+                      title={
+                        approval.notEnforced
+                          ? `${approvalSourceLabel(reported.source)} (saved, not enforced)`
+                          : approvalSourceLabel(reported.source)
+                      }
+                    >
+                      <ApprovalBadge
+                        setting={reportedSetting(reported)}
+                        builtIn={reported.source === 'builtin'}
+                      />
+                    </span>
+                  );
+                }
+              : undefined
+          }
         />
       </Flex>
     );

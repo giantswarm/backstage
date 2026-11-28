@@ -1,7 +1,10 @@
 import {
+  connectorSaveErrorMessage,
+  isForbiddenError,
   isMusterAuthError,
   mutationErrorMessage,
   MUSTER_AUTH_PROMPT,
+  NO_EDIT_RIGHTS_MESSAGE,
 } from './authError';
 
 describe('isMusterAuthError', () => {
@@ -46,5 +49,39 @@ describe('mutationErrorMessage', () => {
 
   it('falls back when there is no message', () => {
     expect(mutationErrorMessage({})).toBe('The request failed.');
+  });
+});
+
+describe('connectorSaveErrorMessage', () => {
+  it('says plainly that the person lacks edit rights on an RBAC refusal', () => {
+    const rbac = new Error(
+      'Failed to update MCP server: mcpservers.muster.giantswarm.io "wiki" is forbidden: User "dev@lab.local" cannot update resource "mcpservers" in API group "muster.giantswarm.io" in the namespace "muster"',
+    );
+    expect(isForbiddenError(rbac)).toBe(true);
+    expect(connectorSaveErrorMessage(rbac)).toBe(NO_EDIT_RIGHTS_MESSAGE);
+    expect(NO_EDIT_RIGHTS_MESSAGE).toMatch(/don't have rights to edit/);
+  });
+
+  it('reads only the apiserver RBAC refusal as no rights, not other refusals that say forbidden', () => {
+    for (const other of [
+      'forbidden: nope',
+      'HTTP 403: governance is not configured for this server',
+      'admission webhook "approval.muster.io" denied the request: tool approval is forbidden here',
+      'Failed to update MCP server: spec.approval is forbidden: approval settings need muster 5.66 or later',
+      'cannot update resource while the server is being deleted',
+    ]) {
+      expect(isForbiddenError(new Error(other))).toBe(false);
+      expect(connectorSaveErrorMessage(new Error(other))).toBe(other);
+    }
+  });
+
+  it('keeps other errors, and a missing session, as they were', () => {
+    expect(connectorSaveErrorMessage(new Error('url is required'))).toBe(
+      'url is required',
+    );
+    expect(connectorSaveErrorMessage(new Error('authentication failure'))).toBe(
+      MUSTER_AUTH_PROMPT,
+    );
+    expect(isForbiddenError(new Error('authentication failure'))).toBe(false);
   });
 });

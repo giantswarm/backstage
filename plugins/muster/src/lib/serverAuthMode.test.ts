@@ -61,11 +61,16 @@ describe('signInServesOneSession', () => {
       },
     });
 
-  it('reads the spec: an own-account sign-in is per session unless pinned with subject', () => {
+  it('reads the spec: an own-account sign-in is per session unless it sets subject', () => {
     expect(signInServesOneSession(discovered)).toBe(true);
     expect(signInServesOneSession(pinned())).toBe(true);
     expect(signInServesOneSession(pinned('session'))).toBe(true);
     expect(signInServesOneSession(pinned('subject'))).toBe(false);
+    expect(
+      signInServesOneSession(
+        makeServer({ auth: { type: 'oauth', grantScope: 'subject' } }),
+      ),
+    ).toBe(false);
   });
 
   it('never says it of a server without a sign-in of the person’s own', () => {

@@ -64,6 +64,9 @@ export const AGENT_MANAGER_TOOLS = {
   getAgentStatus: 'get_agent_status',
   getAgent: 'get_agent',
   updateAgent: 'update_agent',
+  updateAgentAccess: 'update_agent_access',
+  setAgentApproval: 'set_agent_approval',
+  listApprovalGrants: 'list_approval_grants',
   deleteAgent: 'delete_agent',
   listModelConfigs: 'list_model_configs',
   listEgressPolicies: 'list_egress_policies',
@@ -147,8 +150,20 @@ export type AgentSpec = {
   iconUrl?: string;
   skills?: AgentSkillEntry[];
   plugins?: AgentPluginEntry[];
-  /** The toolset selectors exactly as the Tools step composed them. */
-  toolset: string[];
+  /**
+   * The toolset selectors exactly as the Tools step composed them, for an
+   * agent-manager without tool approval. One with it takes {@link tools}
+   * instead (both are refused).
+   */
+  toolset?: string[];
+  /**
+   * The agent's tool list with its approval settings (tool approval): each entry a selector, or `{selector: Allow|Ask|Block}`.
+   * `create_agent` refuses an `Allow` over a connector's `Ask`; those are
+   * granted afterwards with `set_agent_approval`.
+   */
+  tools?: AgentToolEntry[];
+  /** The list's default: `Ask` or `Block` here; `Allow` only by `set_agent_approval`. */
+  default?: AgentApprovalSetting;
   /**
    * HTTP(S) origins the agent may reach besides what its revision compiles
    * (`Agent.spec.egress`), such as `https://github.com:443`.
@@ -243,6 +258,77 @@ export type AgentManagerInfo = {
     /** The last refresh's failure; empty after a success. */
     error?: string;
   };
+};
+
+/** An approval setting of an agent's tool list entry, as agent-manager writes it. */
+export type AgentApprovalSetting = 'Allow' | 'Ask' | 'Block';
+
+/**
+ * One entry of an agent's tool list (the agent chart's `tools`): a selector,
+ * or an object with exactly that one selector as its key and its setting.
+ */
+export type AgentToolEntry = string | Record<string, AgentApprovalSetting>;
+
+/**
+ * A connector admin's `Allow` over that connector's `Ask` for one entry of an
+ * agent's tool list, as agent-manager records it (`get_agent`'s `grants`,
+ * `list_approval_grants`).
+ */
+export type AgentApprovalGrant = {
+  /** The entry it is for, or `default`. */
+  entry: string;
+  /** muster's server key of the connector. */
+  server: string;
+  /** The MCPServer's namespace. */
+  namespace?: string;
+  connectorUid?: string;
+  /**
+   * The server's own names of the tools it covered when it was granted:
+   * muster lifts only those (a grant without them lifts nothing).
+   */
+  tools?: string[];
+  /** Who saved it: email, else subject. */
+  grantedBy?: string;
+  grantedAt?: string;
+  generation?: number;
+  /** `list_approval_grants` only: the agent it is for. */
+  agent?: { namespace: string; name: string; uid?: string };
+  /** `list_approval_grants` only: the agent's name as people see it. */
+  agentDisplayName?: string;
+};
+
+/** A grant a save removed, as the write tools answer it (`dropped`). */
+export type DroppedApprovalGrant = {
+  entry: string;
+  server: string;
+  reason?: string;
+};
+
+/**
+ * `set_agent_approval`'s arguments: a setting per existing entry (`""`
+ * removes it) and the list's default (`""` removes it).
+ */
+export type AgentApprovalChange = {
+  settings?: Record<string, AgentApprovalSetting | ''>;
+  default?: AgentApprovalSetting | '';
+  /** As {@link AgentUpdate.expectedGeneration}. */
+  expectedGeneration?: number;
+};
+
+/** `set_agent_approval`: the list after it, the grants that hold, the ones dropped. */
+export type SetAgentApprovalResult = {
+  toolSettings?: AgentToolEntry[];
+  defaultApproval?: string | null;
+  grants?: AgentApprovalGrant[];
+  dropped?: DroppedApprovalGrant[];
+  sessionsUpdated?: boolean;
+  warnings?: string[];
+};
+
+/** One MCP binding of the agent's kagent template, as `get_agent` reports it (`tools`). */
+export type AgentToolBinding = {
+  server: string;
+  tools?: string[];
 };
 
 /** The objects a create applies, as YAML, plus the values they carry. */
@@ -395,6 +481,13 @@ export type CommitAgentResult = {
   mode?: string;
   dryRun?: boolean;
   commit?: GitOpsCommit;
+  /**
+   * The pull requests an earlier write of the same save opened: an
+   * agent-manager with tool approval writes what an agent is, what it can
+   * reach and its approval settings with a tool each, each its own pull
+   * request in mode `commit`.
+   */
+  earlier?: CommitAgentResult[];
 };
 
 /**
@@ -718,6 +811,36 @@ export type AgentManagerAgent = {
   plugins?: AgentPluginEntry[];
   /** The declared toolset; absent for an agent without one. */
   toolset?: string[];
+  /** The kagent template's MCP bindings, as agent-manager has always reported them. */
+  tools?: AgentToolBinding[];
+  /**
+   * The agent's tool list as stored, with its approval settings (tool
+   * approval). Read through `agentToolListOf`,
+   * which names the field once.
+   */
+  toolSettings?: unknown;
+  /** The list's default approval setting; absent when unset. */
+  defaultApproval?: string;
+  /** The agent's grants that hold. */
+  grants?: AgentApprovalGrant[];
+  /**
+   * The HelmRelease's `metadata.generation` as read: what a write's `expectedGeneration` names. Read through
+   * `agentGenerationOf`.
+   */
+  generation?: number;
+  /** True when the agent's chart takes approval settings (`tools`, `default`). */
+  approvalSettings?: boolean;
+  /**
+   * Whether the agent's settings are bound to its Sessions: `pending` until
+   * the release ran its current generation (`approvalEnforced` is then
+   * absent). Read through `approvalEnforcementOf`.
+   */
+  approvalEnforcement?: string;
+  /**
+   * False when agent-manager says the settings are not enforced (its
+   * session binding is off); read through `approvalNotEnforced`.
+   */
+  approvalEnforced?: boolean;
   /** No toolset declared, muster bound: sees every tool the gateway exposes. */
   implicitFullAccess?: boolean;
   ready: boolean | null;
@@ -851,6 +974,17 @@ export type AgentUpdate = {
   /** Replaces the whole list; an empty list clears it. */
   plugins?: AgentPluginEntry[];
   toolset?: string[];
+  /**
+   * The tool list with its settings, in place of `toolset` where
+   * agent-manager takes it (`update_agent_access`); never a new `Allow`
+   * over a connector's `Ask`.
+   */
+  tools?: AgentToolEntry[];
+  /**
+   * The release's generation the update was composed from: agent-manager
+   * refuses the write with a `conflict` when the release moved since.
+   */
+  expectedGeneration?: number;
   /** Replaces the whole list; an empty list clears it. */
   egress?: string[];
   /** Replaces the whole list; an empty list clears it. */
@@ -881,7 +1015,63 @@ export type UpdateAgentResult = {
   manifests: AgentManifests;
   /** The authenticated caller the write ran as. */
   requestedBy?: string;
+  /** The approval grants the save removed (tool approval). */
+  dropped?: DroppedApprovalGrant[];
+  /**
+   * False when muster was not told about the dropped grants yet: running
+   * Sessions keep them until agent-manager's retry lands.
+   */
+  sessionsUpdated?: boolean;
+  /** What agent-manager could not finish, in its words. */
+  warnings?: string[];
 };
+
+/**
+ * The fields `update_agent` takes from an agent-manager with tool approval:
+ * what an agent is. Everything else an update carries is what it can reach,
+ * which `update_agent_access` takes.
+ */
+export const DESCRIBING_UPDATE_FIELDS = [
+  'displayName',
+  'description',
+  'tags',
+  'systemMessage',
+  'modelConfig',
+  'iconUrl',
+] as const;
+
+/**
+ * An update split for an agent-manager with tool approval: `describe` for
+ * `update_agent`, `access` for `update_agent_access`; each only when it
+ * carries a field.
+ */
+export function splitAgentUpdate(update: AgentUpdate): {
+  describe?: AgentUpdate;
+  access?: AgentUpdate;
+} {
+  const identity = { namespace: update.namespace, name: update.name };
+  const describe: AgentUpdate = { ...identity };
+  const access: AgentUpdate = { ...identity };
+  for (const [key, value] of Object.entries(update)) {
+    if (
+      key === 'namespace' ||
+      key === 'name' ||
+      key === 'expectedGeneration' ||
+      value === undefined
+    ) {
+      continue;
+    }
+    const target = (DESCRIBING_UPDATE_FIELDS as readonly string[]).includes(key)
+      ? describe
+      : access;
+    (target as Record<string, unknown>)[key] = value;
+  }
+  const carries = (part: AgentUpdate) => Object.keys(part).length > 2;
+  return {
+    ...(carries(describe) && { describe }),
+    ...(carries(access) && { access }),
+  };
+}
 
 /**
  * `update_agent` with `mode: commit` and `dryRun`: the merged values as
@@ -898,6 +1088,8 @@ export type UpdateAgentCommitDryRun = UpdateAgentResult & CommitAgentResult;
  * caller is the reader (see the toast rule in `docs/ui.md`).
  */
 export type DeleteAgentResult = {
+  /** The approval grants the delete removed (tool approval). */
+  dropped?: DroppedApprovalGrant[];
   name: string;
   namespace: string;
   helmReleaseDeleted: boolean;
@@ -907,3 +1099,62 @@ export type DeleteAgentResult = {
   ociRepositoryKept?: string;
   requestedBy?: string;
 };
+
+/**
+ * The release generation `get_agent` reports, the precondition of a write;
+ * undefined from an agent-manager that reports none (then no precondition
+ * is sent). One place, so the field's final name is a one-line change.
+ */
+export function agentGenerationOf(
+  agent: Pick<AgentManagerAgent, 'generation'> | undefined,
+): number | undefined {
+  return typeof agent?.generation === 'number' ? agent.generation : undefined;
+}
+
+/**
+ * Whether a refusal is agent-manager's stale-write `conflict`: the agent
+ * changed since the form read it.
+ */
+export function isStaleWriteConflict(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): boolean {
+  return (
+    failure?.code === 'conflict' &&
+    /generation|changed since/i.test(failure.message)
+  );
+}
+
+/**
+ * agent-manager's refusal of approval settings for an agent whose
+ * namespace's chart source serves a chart without them: the chart it names,
+ * or undefined for any other refusal. The test pins agent-manager's wording.
+ */
+export function noApprovalChartRefusal(
+  failure: { code?: AgentManagerErrorCode; message: string } | undefined,
+): { chart: string } | undefined {
+  if (failure?.code !== 'unsupported') {
+    return undefined;
+  }
+  const match = failure.message.match(
+    /the agent chart (.+?) has no tool approval settings/,
+  );
+  return match ? { chart: match[1] } : undefined;
+}
+
+/**
+ * What an approval refusal after the rest of an edit landed begins with
+ * (`useUpdateAgent`): the tool list and every other change were written, only
+ * the approval settings were not.
+ */
+export const APPROVAL_AFTER_SAVE_PREFIX =
+  'Saved: every other change, the tool list included.';
+
+/**
+ * Whether a refusal of the approval settings came after the rest of the edit
+ * landed, so the agent is changed and only the settings are missing.
+ */
+export function approvalRefusedAfterSave(
+  failure: { message: string } | undefined,
+): boolean {
+  return failure?.message.startsWith(APPROVAL_AFTER_SAVE_PREFIX) ?? false;
+}

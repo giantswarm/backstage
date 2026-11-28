@@ -178,30 +178,19 @@ export function ConnectorSignInLinks({
   }, [found, seen]);
   // kagent stamps every item of a turn with the turn's latest time, which
   // moves on while the agent works: the time this tab first saw a link is the
-  // better bound on its age when it was there to see it arrive.
-  // The sign-in link of a URL elicitation the agent waits on is one of them
-  // too, so it returns to this page and the agent continues once signed in.
-  const elicited = pending?.asks === 'sign-in' ? pending.signIn : undefined;
-  const links = useMemo(() => {
-    const all = new Map(
-      [...found].map(([key, link]) => {
-        const issuedAt = earliest(link.issuedAt, seen[key]);
-        return [key, issuedAt ? { ...link, issuedAt } : link];
-      }),
-    );
-    const key = signInLinkKey(elicited?.url);
-    if (elicited && key && !all.has(key)) {
-      all.set(key, {
-        key,
-        url: elicited.url,
-        server: elicited.server,
-        servers: [],
-        label: elicited.server,
-        asked: true,
-      });
-    }
-    return all;
-  }, [found, seen, elicited]);
+  // better bound on its age when it was there to see it arrive. A URL
+  // elicitation the agent waits on is not one of these links: its prompt
+  // (`UrlElicitationPanel`) handles it, whatever it asks for.
+  const links = useMemo(
+    () =>
+      new Map(
+        [...found].map(([key, link]) => {
+          const issuedAt = earliest(link.issuedAt, seen[key]);
+          return [key, issuedAt ? { ...link, issuedAt } : link];
+        }),
+      ),
+    [found, seen],
+  );
 
   const [progress, setProgress] = useState<Record<string, SignInProgress>>(() =>
     readStored<SignInProgress>(PROGRESS_KEY),
@@ -241,21 +230,6 @@ export function ConnectorSignInLinks({
       // Only the tab that started the sign-in answers, only the question that
       // passed this very link on, and only once.
       if (
-        started &&
-        question?.asks === 'sign-in' &&
-        asked &&
-        !answered.current.has(asked) &&
-        signInLinkKey(question.signIn?.url) === key
-      ) {
-        answered.current.add(asked);
-        note = 'The agent continues.';
-        current.onAnswer({
-          taskId: question.taskId,
-          decision: 'approve',
-          text: "I've signed in.",
-          ...(question.askedIn && { askedIn: question.askedIn }),
-        });
-      } else if (
         started &&
         question?.asks === 'input' &&
         asked &&
@@ -299,7 +273,7 @@ export function ConnectorSignInLinks({
         if (
           returnId(key) === id &&
           typeof server === 'string' &&
-          (link.asked || link.servers.includes(server))
+          link.servers.includes(server)
         ) {
           finish(key);
         }
@@ -421,7 +395,7 @@ export function ConnectorSignInAction({ link }: { link: ConnectorSignInLink }) {
     return null;
   }
   const progress = context.progressOf(link.key);
-  const target = link.asked ? '' : ` to ${link.label}`;
+  const target = ` to ${link.label}`;
 
   if (progress?.status === 'done') {
     return (

@@ -6,6 +6,7 @@ import {
 } from '@giantswarm/backstage-plugin-analytics-react';
 import { WorkspaceManagerClient } from '../apis/WorkspaceManagerClient';
 import { authorizationError } from '../lib/workspaceManager';
+import { parseToolErrorCode } from '@giantswarm/backstage-plugin-gs-common';
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
@@ -87,6 +88,31 @@ function refusalNamingTenant(
       agent.namespace,
       directory,
     )}, and you have no access to its agents on ${agent.installation}. Ask your platform team for the agent-platform:user role in its namespace. (${error.message})`,
+  );
+}
+
+/**
+ * Whether a failed start was answered: agent-manager (or the workspace
+ * manager before it) refused it in its own words. Nothing is left behind by
+ * such a start: a session kagent created for it was deleted again, which
+ * spends its key at kagent ("request_id belongs to a deleted Session"), so
+ * the next press is a new submission with a new key. Only a failure without
+ * an answer (the network, a timeout, a sign-in) keeps the key, since the
+ * session may have started.
+ */
+function startWasAnswered(error: unknown): boolean {
+  if (error instanceof AgentManagerError) {
+    return ![
+      'unauthenticated',
+      'auth_required',
+      'backend_error',
+      'unknown',
+    ].includes(error.code);
+  }
+  return (
+    error instanceof Error &&
+    !(error instanceof AgentManagerNotConnectedError) &&
+    parseToolErrorCode(error.message) !== undefined
   );
 }
 
@@ -209,10 +235,11 @@ export function useCreateSession(
 
   const { mutateAsync, reset } = mutation;
 
-  // The key of the submission in flight, or of the last one that failed.
-  // Kept so that starting the *same* prompt with the same agent again — the
-  // natural retry after a network failure — reuses it, while a different prompt
-  // or agent is a new submission with a new key.
+  // The key of the submission in flight, or of the last one that failed
+  // without an answer. Kept so that starting the *same* prompt with the same
+  // agent again — the natural retry after a network failure — reuses it, while
+  // a different prompt or agent, or a retry after a refusal
+  // (startWasAnswered), is a new submission with a new key.
   const lastRequest = useRef<NewSessionRequest | undefined>(undefined);
 
   const createSession = useCallback(
@@ -227,7 +254,15 @@ export function useCreateSession(
           ? { ...newSession, requestId: previous.requestId }
           : { ...newSession, requestId: crypto.randomUUID() };
       lastRequest.current = request;
-      const { sessionId } = await mutateAsync(request);
+      let sessionId: string;
+      try {
+        ({ sessionId } = await mutateAsync(request));
+      } catch (error) {
+        if (startWasAnswered(error)) {
+          lastRequest.current = undefined;
+        }
+        throw error;
+      }
       // Started: the next identical prompt is a new conversation, not a retry.
       lastRequest.current = undefined;
       return sessionId;

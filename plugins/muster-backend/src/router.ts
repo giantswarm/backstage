@@ -48,6 +48,15 @@ import {
   type McpUsageRead,
 } from './mcpUsage';
 import { UsageCache, usageCacheKey } from './usageCache';
+import { isOnMusterPages, requestHandoffTicket } from './handoff';
+import {
+  type WorkloadTokenSource,
+  workloadInstallationOf,
+  workloadTokenSource,
+} from './workloadToken';
+import { assertOwnToken } from './ownToken';
+import type { CatalogService } from '@backstage/plugin-catalog-node';
+import { approvalIdOf, fetchApproval, postApprovalDecision } from './approvals';
 
 const EXECUTION_STATUSES = ['inprogress', 'completed', 'failed'] as const;
 
@@ -97,6 +106,23 @@ export interface RouterOptions {
   lifecycle?: Pick<RootLifecycleService, 'addStartupHook'>;
   /** Names the Backstage user a usage answer is cached for. */
   httpAuth: HttpAuthService;
+  /**
+   * Overridable for tests: how the sign-in handoff and the decision API
+   * reach muster.
+   */
+  handoffFetch?: typeof fetch;
+  /**
+   * Overridable for tests: the portal backend's workload token for muster
+   * (`workloadToken.ts`); defaults to the file `muster.workloadTokenFile`
+   * names.
+   */
+  workloadToken?: WorkloadTokenSource;
+  /**
+   * Where a staff person is looked up to tell whether the token forwarded
+   * for the approval routes and the handoff is theirs (`ownToken.ts`).
+   * Without it, such a person's token is refused there.
+   */
+  catalog?: CatalogService;
 }
 
 /**
@@ -283,6 +309,44 @@ function loginTarget(
   return hasServer ? { server: server as string } : { app: app as string };
 }
 
+/** What an approval route answers on an installation without per-user sessions. */
+const NO_PERSON_REFUSAL = {
+  status: 403,
+  error: 'untrusted_client',
+  message:
+    'This muster takes no decisions from the portal: it runs without per-user sign-in.',
+};
+
+/**
+ * What an approval route answers for an installation that is not the
+ * portal's own (`workloadInstallationOf`): its muster gets no workload token,
+ * so it takes no decision from the portal and is not asked.
+ */
+const NOT_WORKLOAD_INSTALLATION_REFUSAL = {
+  status: 403,
+  error: 'untrusted_workload',
+  message:
+    "This portal decides inline only on its own installation's muster: open muster's page to decide.",
+};
+
+/** The approval id of the body's `url`, which must be the installation's muster approval page. */
+function approvalLinkId(
+  req: express.Request,
+  installation: MusterInstallationConfig,
+): string {
+  const url = nonEmptyString(req.body?.url);
+  if (!url) {
+    throw new InputError('url is required');
+  }
+  const id = approvalIdOf(url, installation);
+  if (!id) {
+    throw new InputError(
+      `url is not an approval page of the muster of installation '${installation.name}'`,
+    );
+  }
+  return id;
+}
+
 function nonEmptyString(value: unknown): string | undefined {
   return typeof value === 'string' && value.trim() !== ''
     ? value.trim()
@@ -331,6 +395,8 @@ export async function createRouter(
   options: RouterOptions,
 ): Promise<express.Router> {
   const { logger, config } = options;
+  const workloadToken =
+    options.workloadToken ?? workloadTokenSource(config, logger);
 
   // The installations this proxy can target: one derived from every
   // `gs.installations` entry with a base domain (`https://muster.<baseDomain>/
@@ -368,6 +434,13 @@ export async function createRouter(
       );
     }
   }
+
+  // The one installation whose muster gets the portal's workload token.
+  const workloadInstallation = workloadInstallationOf(
+    config,
+    [...installations.keys()],
+    logger,
+  );
 
   if (installations.size === 0) {
     logger.info(
@@ -426,6 +499,8 @@ export async function createRouter(
         // domain isn't derivable from the name, so it comes from config rather
         // than being fabricated frontend-side.
         endpoint: installation.url,
+        // Where muster serves its own pages, when not on the endpoint's host.
+        ...(installation.publicUrl && { publicUrl: installation.publicUrl }),
         requiresAuth: musterInstallationRequiresAuth(installation),
         ...reachabilityFields(
           reachability.get(musterProbeUrl(installation.url)),
@@ -558,6 +633,42 @@ export async function createRouter(
     return { authToken };
   };
 
+  /** Why an approval route asks no muster (see `presentedTokens`). */
+  const refusalWithoutMuster = (installation: MusterInstallationConfig) =>
+    hasPerUserSession(installation)
+      ? NOT_WORKLOAD_INSTALLATION_REFUSAL
+      : NO_PERSON_REFUSAL;
+
+  /**
+   * The person's token and the portal's workload token for a route that
+   * presents both to muster (`/handoff`, `/approvals/*`), or `undefined` when
+   * muster is not to be asked: no per-person token, or an installation that
+   * is not the portal's own (its muster gets no workload token, which is
+   * valid at the portal's own muster only). Refuses (403) a token that is not the signed-in person's own
+   * before muster is called: the workload token tells muster that the portal
+   * presents the person's token, so it presents nobody else's.
+   */
+  const presentedTokens = async (
+    req: express.Request,
+    installation: MusterInstallationConfig,
+    route: string,
+  ): Promise<{ token: string; workloadToken?: string } | undefined> => {
+    const { authToken } = readCallOptions(req, installation);
+    if (!authToken || installation.name !== workloadInstallation) {
+      return undefined;
+    }
+    await assertOwnToken({
+      req,
+      token: authToken,
+      httpAuth: options.httpAuth,
+      catalog: options.catalog,
+      logger,
+      installation: installation.name,
+      route,
+    });
+    return { token: authToken, workloadToken: await workloadToken() };
+  };
+
   /**
    * The options of a tool call the page made: the page can put a URL
    * elicitation to the person (MCP 2026-07-28), so the call declares it, and
@@ -665,6 +776,20 @@ export async function createRouter(
     );
     if (includePresets !== undefined) {
       args.include_presets = includePresets === 'true';
+    }
+    // An agent's tool list to report approvals for (reporting only; muster
+    // checks its shape and refuses it beside a toolset).
+    const agentTools = req.method === 'POST' ? req.body?.agentTools : undefined;
+    if (agentTools !== undefined) {
+      if (
+        typeof agentTools !== 'object' ||
+        agentTools === null ||
+        Array.isArray(agentTools) ||
+        !Array.isArray((agentTools as { tools?: unknown }).tools)
+      ) {
+        throw new InputError('agentTools must be an object with a tools list');
+      }
+      args.agentTools = agentTools;
     }
 
     const result = await client.filterTools(
@@ -1013,6 +1138,116 @@ export async function createRouter(
     }
 
     res.json(parseAuthLogoutResult(payload));
+  });
+
+  /**
+   * A one-time sign-in handoff ticket for one of muster's pages (its approval
+   * page, its connector sign-in start), so the person signed in here is not
+   * asked to sign in to muster again when the page opens
+   * (contract-muster-approval.md §5a). Asked with the person's own token,
+   * only when they open the page from the portal. Answers `{ ticket }`, or
+   * `{}` when muster issues none (the link then opens as is and muster signs
+   * the browser in itself). The ticket is never logged.
+   */
+  router.post('/handoff', async (req, res) => {
+    const { config: installation } = resolveInstallation(req);
+    const url = nonEmptyString(req.body?.url);
+    if (!url) {
+      throw new InputError('url is required');
+    }
+    if (!isOnMusterPages(url, installation)) {
+      throw new InputError(
+        `url is not on the muster pages of installation '${installation.name}'`,
+      );
+    }
+    if (!hasPerUserSession(installation)) {
+      res.json({});
+      return;
+    }
+    const presented = await presentedTokens(req, installation, 'handoff');
+    const ticket = presented
+      ? await requestHandoffTicket({
+          installation,
+          url,
+          ...presented,
+          logger,
+          ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
+        })
+      : undefined;
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(ticket ? { ticket } : {});
+  });
+
+  /**
+   * The person's pending approval behind a link to the installation's muster
+   * approval page, as muster's decision API shows it to a trusted client
+   * (contract-muster-approval.md §5b), so the chat can show it and offer
+   * Approve and Decline inline. Asked with the person's own token. Answers
+   * `{ view }`, or `{ refusal: { status, error, message } }` when muster
+   * shows nothing (not a trusted client, someone else's, expired, ...).
+   */
+  router.post('/approvals/view', async (req, res) => {
+    const { config: installation } = resolveInstallation(req);
+    const id = approvalLinkId(req, installation);
+    res.setHeader('Cache-Control', 'no-store');
+    const presented = await presentedTokens(
+      req,
+      installation,
+      'approvals/view',
+    );
+    if (!presented) {
+      res.json({ refusal: refusalWithoutMuster(installation) });
+      return;
+    }
+    res.json(
+      await fetchApproval({
+        installation,
+        id,
+        ...presented,
+        logger,
+        ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
+      }),
+    );
+  });
+
+  /**
+   * The person's decision on that approval, posted on their click in the
+   * chat with the digest of the view they saw. Answers `{ status }`
+   * (`approved`, `declined`) or `{ refusal }`; nothing is decided on a
+   * refusal.
+   */
+  router.post('/approvals/decision', async (req, res) => {
+    const { config: installation } = resolveInstallation(req);
+    const id = approvalLinkId(req, installation);
+    const decision = req.body?.decision;
+    if (decision !== 'approve' && decision !== 'decline') {
+      throw new InputError('decision must be approve or decline');
+    }
+    const digest = nonEmptyString(req.body?.digest);
+    if (!digest) {
+      throw new InputError('digest is required');
+    }
+    res.setHeader('Cache-Control', 'no-store');
+    const presented = await presentedTokens(
+      req,
+      installation,
+      'approvals/decision',
+    );
+    if (!presented) {
+      res.json({ refusal: refusalWithoutMuster(installation) });
+      return;
+    }
+    res.json(
+      await postApprovalDecision({
+        installation,
+        id,
+        decision,
+        digest,
+        ...presented,
+        logger,
+        ...(options.handoffFetch && { fetchFn: options.handoffFetch }),
+      }),
+    );
   });
 
   // --- MCP servers (runtime view via core_mcpserver_list) ------------------

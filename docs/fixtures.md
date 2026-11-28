@@ -187,15 +187,38 @@ check (`core_mcpserver_validate`, which passes), and the writes to
 connectors. The catalogue describes them all, the definition tools
 with the arguments the flow asks about (`displayName`, `tags`).
 
-The connector writes (`core_mcpserver_create`, `_update`, `_delete`,
-`core_service_start`, `_stop`, `_restart`) are kept in memory until the page
+The connector writes (`core_mcpserver_create`, `_update`, `_connect`,
+`_set_approval`, `_delete`, `core_service_start`, `_stop`, `_restart`) are
+kept in memory until the page
 reloads, in one state per scenario that every muster read takes its data
 from (`plugins/muster/src/apis/fixtures/musterFixtureState.ts`): the
 `MCPServer` and `Workflow` objects, the servers list, the connector names,
 the person's sign-in status, the catalogue with its workflows and presets,
 the executions and the usage. An installation's reads are worked out again
-only after a write there.
+only after a write there. `_update` and `_connect` take muster's split
+arguments and refuse each other's in muster's words before writing
+(`core_mcpserver_update does not take url: use core_mcpserver_connect …`).
 
+- Tool approval: the first connected connector of muster's own namespace in
+  each installation and every organization's connected connector (`wiki`) start
+  reviewed (_Recommended_; muster's own also with delete tools blocked and a
+  _New_ last tool); all others are not reviewed. The guest is connector admin of
+  muster's own connectors only. `core_mcpserver_set_approval` and a create's
+  `preset` write `spec.approval`. Governance mode on `core_mcpserver_list`: the
+  first installation is trusted, the second governed. `filter_tools` with
+  `agentTools` reports an agent's list as muster does.
+- An agent's tool approval: agent-manager (not on `fennel`, which has no
+  `update_agent_access`, `set_agent_approval` or `list_approval_grants`)
+  answers `toolSettings`, takes `tools` and `default` on `create_agent`, splits
+  `update_agent` from `update_agent_access`, and refuses an `Allow` over a
+  connector's `Ask` except through `set_agent_approval` for a connector the
+  guest administers. Every save drops grants on connectors the guest does not
+  administer. Writes refuse a stale `expectedGeneration` with `conflict`.
+  `approvalEnforcement` is `pending` until a write settled, then `enforced`;
+  `tarragon`'s first organization serves an older chart (`unsupported`). The
+  last ready agent of an organization starts with an exception on its `wiki`
+  connector granted by `dana@example.com`. On the second installation's muster
+  tools that ask also report `approval.unavailable`.
 - A workflow's steps call the tools they were written against, from the data
   set's serving connectors; it is available while a serving connector offers
   each of them. Deleting, turning off or failing a connector makes the

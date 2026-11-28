@@ -99,14 +99,60 @@ which single sign-on replaced; they are not the value here.
 ```yaml
 muster:
   installations:
-    # Overrides only the endpoint of a derived installation.
+    # Overrides only the endpoint of a derived installation. Its pages
+    # (approval, sign-in) stay on muster's public URL, so name it.
     - name: golem
       url: https://muster-internal.golem.example/mcp
+      publicUrl: https://muster.golem.example
     # Adds an installation the fleet configuration does not know.
     - name: lab
       url: https://muster.lab.example/mcp
       authProvider: oidc-lab
 ```
+
+`publicUrl` is where that muster serves its own pages (its
+`muster.oauth.mcpClient.publicUrl`). Set it only when that is not on the host of
+`url`: the session page returns a person from muster's approval page and
+sign-in start only for links on it, else on the origin of `url`; otherwise those
+links open as sent and the person presses _Done_. muster's
+`postLoginRedirectAllowlist` must admit the portal either way.
+
+Routes (all take the person's token; `installation=<name>`):
+
+| Route                                 | Body                                                  | Answer                                                         |
+| ------------------------------------- | ----------------------------------------------------- | -------------------------------------------------------------- |
+| `POST /api/muster/handoff`            | `{"url"}` (sign-in start or approval page)            | `{ "ticket" }`, or `{}` when muster issues none (never logged) |
+| `POST /api/muster/approvals/view`     | `{"url"}` (approval page)                             | `{ "view" }` or `{ "refusal": { status, error, message } }`    |
+| `POST /api/muster/approvals/decision` | `{"url", "decision": "approve"\|"decline", "digest"}` | `{ "status": "approved"\|"declined" }` or `{ "refusal" }`      |
+
+Only a link to the installation's approval page is accepted (400 otherwise);
+the chat calls `decision` only on the person's click.
+
+Trust, all enforced by muster:
+
+- Tickets and decisions only for OAuth clients in muster's
+  `approval.trustedClients` (formerly `approval.handoffClients`): list the
+  portal's own Dex client (the `azp` of the forwarded token), never a client a
+  CLI or an agent signs in through.
+- All three routes also send the portal's workload token in
+  `X-Muster-Approval-Client`: the projected ServiceAccount token (audience
+  `muster`) read on every request from `muster.workloadTokenFile`, default
+  `/var/run/secrets/muster.giantswarm.io/serviceaccount/token` (mounted by the
+  Agent Platform chart). muster reviews it (TokenReview, then verb `decide` on
+  `toolapprovals.muster.giantswarm.io`, granted only to the portal's
+  ServiceAccount). Without the file none is sent and muster refuses
+  (`untrusted_workload`); the chat opens muster's own pages. `agentlab portal
+dev` mints one and sets `muster.workloadTokenFile`.
+- Before muster is called, the forwarded token's identity must be the signed-in
+  Backstage user (`oidcIdentity` in gs-node: `user:oidc/<hash of sub>`, or for
+  staff the catalog user with that GitHub username or verified email). Another
+  person's token, no user, a service or the guest gets 403, logged as
+  `muster_token_not_own` (never the token).
+- Only one installation's muster gets the workload token:
+  `muster.workloadInstallation`, else the `gs.installations` entry whose
+  `oidcTokenProvider` is `gs.authProvider`, else the only muster installation.
+  Every other installation answers `untrusted_workload` (and `/handoff` `{}`)
+  without asking its muster.
 
 `GET /api/muster/installations` reports each installation with its `source`
 (`derived` or `configured`), whether it requires the person's token

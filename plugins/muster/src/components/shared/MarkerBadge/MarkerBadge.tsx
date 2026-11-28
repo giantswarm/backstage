@@ -24,6 +24,25 @@ const useStyles = makeStyles({
     color: 'var(--bui-warning-fg-subdued)',
     boxShadow: 'inset 0 0 0 1px var(--bui-warning-border)',
   },
+  // A tool approval's *Ask*: a person is in the loop, not a risk.
+  info: {
+    background: 'var(--bui-announcement-bg-subdued)',
+    color: 'var(--bui-announcement-fg-subdued)',
+    boxShadow: 'inset 0 0 0 1px var(--bui-announcement-border)',
+  },
+  // A tool approval's *Block*: it reads apart from *Ask* at a glance.
+  danger: {
+    background: 'var(--bui-negative-bg-subdued)',
+    color: 'var(--bui-negative-fg-subdued)',
+    boxShadow: 'inset 0 0 0 1px var(--bui-negative-border)',
+  },
+  // An icon before the words, at the text's size.
+  withIcon: {
+    display: 'inline-flex',
+    alignItems: 'center',
+    gap: 4,
+    '& svg': { width: 12, height: 12 },
+  },
   // The size of a marker riding an edge: a workflow step's top edge on the
   // flow canvas and in its phone list.
   compact: {
@@ -33,8 +52,11 @@ const useStyles = makeStyles({
 });
 
 export type MarkerBadgeProps = {
-  /** Neutral for a plain fact, warning for one a person should weigh. */
-  tone: 'neutral' | 'warning';
+  /**
+   * Neutral for a plain fact, warning for one a person should weigh; info
+   * and danger for a tool approval's *Ask* and *Block*.
+   */
+  tone: 'neutral' | 'warning' | 'info' | 'danger';
   /**
    * `small`, bui's small badge, beside a name in a list; `compact` (18px
    * high) where the marker rides the edge of a box. Defaults to `small`.
@@ -42,6 +64,8 @@ export type MarkerBadgeProps = {
   size?: 'small' | 'compact';
   /** Extra class, e.g. a step number's round shape and position. */
   className?: string;
+  /** Before the words, decorative: the words carry the meaning. */
+  icon?: ReactNode;
   children: ReactNode;
 };
 
@@ -56,6 +80,7 @@ export function MarkerBadge({
   tone,
   size = 'small',
   className,
+  icon,
   children,
 }: MarkerBadgeProps) {
   const classes = useStyles();
@@ -66,11 +91,13 @@ export function MarkerBadge({
         classes.root,
         classes[tone],
         size === 'compact' ? classes.compact : undefined,
+        icon ? classes.withIcon : undefined,
         className,
       ]
         .filter(Boolean)
         .join(' ')}
     >
+      {icon}
       {children}
     </Badge>
   );

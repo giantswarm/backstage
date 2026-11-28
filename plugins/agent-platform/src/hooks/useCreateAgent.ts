@@ -5,6 +5,7 @@ import { useTrackedMutation } from '@giantswarm/backstage-plugin-analytics-react
 import {
   AgentManagerError,
   AgentManagerNotConnectedError,
+  type AgentApprovalChange,
   type AgentSpec,
   type CommitAgentResult,
   type CreateAgentResult,
@@ -31,9 +32,25 @@ export type CreateAgentFailure = {
   signInRequired?: boolean;
 };
 
+/**
+ * A live create: the result, and when the approval settings `create_agent`
+ * does not take were refused afterwards, agent-manager's words (the agent
+ * exists, with the connectors' settings where those would have been).
+ */
+export type DeployAgentResult = CreateAgentResult & {
+  approvalFailure?: string;
+};
+
 export type CreateAgentState = {
-  /** `create_agent` as the person: applies the release live. */
-  deploy: (spec: AgentSpec) => Promise<CreateAgentResult>;
+  /**
+   * `create_agent` as the person: applies the release live; then, with
+   * `followUp`, `set_agent_approval` for what `create_agent` does not take
+   * (an `Allow` over a connector's `Ask`, an allowing default).
+   */
+  deploy: (
+    spec: AgentSpec,
+    followUp?: AgentApprovalChange,
+  ) => Promise<DeployAgentResult>;
   /** `create_agent` with `mode: commit`: a pull request instead. */
   commit: (spec: AgentSpec) => Promise<CommitAgentResult>;
   isDeploying: boolean;
@@ -98,12 +115,37 @@ export function useCreateAgent(
   );
 
   const deployMutation = useTrackedMutation({
-    mutationFn: (spec: AgentSpec) => requireClient().createAgent(spec),
+    mutationFn: async ({
+      spec,
+      followUp,
+    }: {
+      spec: AgentSpec;
+      followUp?: AgentApprovalChange;
+    }): Promise<DeployAgentResult> => {
+      const agentManager = requireClient();
+      const result = await agentManager.createAgent(spec);
+      if (!followUp) {
+        return result;
+      }
+      try {
+        await agentManager.setAgentApproval(
+          spec.namespace,
+          spec.name,
+          followUp,
+        );
+        return result;
+      } catch (error) {
+        return {
+          ...result,
+          approvalFailure: classifyCreateFailure(error).message,
+        };
+      }
+    },
     event: () => ({
       name: 'AgentPlatform.agentCreated',
       attributes: { mode: 'deploy' },
     }),
-    onSuccess: (_result, spec) => onDeployed(spec),
+    onSuccess: (_result, { spec }) => onDeployed(spec),
   });
   const commitMutation = useTrackedMutation({
     mutationFn: (spec: AgentSpec) => requireClient().commitAgent(spec),
@@ -113,7 +155,12 @@ export function useCreateAgent(
     }),
   });
 
-  const { mutateAsync: deploy, reset: resetDeploy } = deployMutation;
+  const { mutateAsync: deployAsync, reset: resetDeploy } = deployMutation;
+  const deploy = useCallback(
+    (spec: AgentSpec, followUp?: AgentApprovalChange) =>
+      deployAsync({ spec, followUp }),
+    [deployAsync],
+  );
   const { mutateAsync: commit, reset: resetCommit } = commitMutation;
   const error = deployMutation.error ?? commitMutation.error;
 

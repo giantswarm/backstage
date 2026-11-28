@@ -42,7 +42,9 @@ import {
   sendEnterKeyHint,
 } from '../../lib/sendKey';
 import { SendKeyHint } from '../SendKeyHint';
-import { SignInRequestPanel } from '../SignInRequestPanel';
+import { UrlElicitationPanel } from '../UrlElicitationPanel';
+import type { MusterPages } from '../../lib/urlElicitation';
+import type { InlineApprovals, SessionAgent } from '../InlineApproval';
 
 /**
  * The tallest the card grows before its body scrolls: about half the view, so
@@ -224,6 +226,24 @@ export type PendingConfirmationPanelProps = {
   agentName?: string;
   /** Names the connector the tool belongs to, as Customize does (UX review M2). */
   connectorOf?: ConnectorOf;
+  /**
+   * Where the session's muster serves its pages, for a URL elicitation: a
+   * link to its approval page or sign-in start there returns to the session
+   * once the person is done there.
+   */
+  musterPages?: MusterPages;
+  /**
+   * Asks muster for a one-time sign-in handoff ticket for one of its pages,
+   * so the person is not asked to sign in to muster again there.
+   */
+  requestHandoff?: (url: string) => Promise<string | undefined>;
+  /**
+   * Reads and decides the person's approvals on the session's muster, so a
+   * link to its approval page is decided in the chat.
+   */
+  approvals?: InlineApprovals;
+  /** The session's agent, to say when another agent asks. */
+  sessionAgent?: SessionAgent;
 };
 
 /**
@@ -294,13 +314,17 @@ export type PendingConfirmationPanelProps = {
  * a side-effecting tool call.
  */
 export function PendingConfirmationPanel(props: PendingConfirmationPanelProps) {
-  if (props.pending.asks === 'sign-in') {
+  if (props.pending.asks === 'url') {
     return (
-      <SignInRequestPanel
+      <UrlElicitationPanel
         pending={props.pending}
         isAnswering={props.isAnswering}
         error={props.error}
         onAnswer={props.onAnswer}
+        musterPages={props.musterPages}
+        requestHandoff={props.requestHandoff}
+        approvals={props.approvals}
+        sessionAgent={props.sessionAgent}
       />
     );
   }

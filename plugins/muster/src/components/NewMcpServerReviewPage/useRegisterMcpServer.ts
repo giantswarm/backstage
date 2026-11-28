@@ -12,7 +12,21 @@ import {
   type McpServerAuthMode,
   type McpServerDefinition,
 } from '../../lib/mcpServerDefinition';
-import { toolArgumentsQuery } from '../shared/hooks';
+import { defaultPresetFor } from '../../lib/toolApproval';
+import {
+  governanceModeOf,
+  musterServerInfoQueryKey,
+} from '../../lib/governanceMode';
+import { musterServerListQueryKey } from '../../hooks/useMusterServerAvailability';
+import {
+  CONNECTOR_UPDATE_TOOL,
+  editTakesArgument,
+} from '../../lib/connectorWrites';
+import {
+  connectToolSchema,
+  toolArgumentsQuery,
+  writeConnectorEdit,
+} from '../shared/hooks';
 
 /**
  * Client credentials handed to exactly one write. React Query keeps a
@@ -60,8 +74,11 @@ export type McpServerRegistration = {
  * The wizard's write, through muster's own core tools over the per-user MCP
  * session — the same live write path the raw-JSON dialog and the CLI use.
  * Validate runs as a dry-run first, so the definition is checked by the
- * authority that will apply it; then create, or update when this wizard run
- * registered the server already (never a delete-and-recreate). A create is
+ * authority that will apply it; then create, or an edit when this wizard run
+ * registered the server already (never a delete-and-recreate), through
+ * muster's split writes: the connection through `core_mcpserver_connect`, the
+ * rest through `core_mcpserver_update` (`writeConnectorEdit`; one update on
+ * an older muster). A create is
  * reported as `Muster.mcpServerAdded`, an update in a run started from the
  * server's Edit as `Muster.mcpServerUpdated`; an update later in an Add run is
  * part of the registration, and reports nothing.
@@ -86,16 +103,22 @@ export function useRegisterMcpServer() {
       isEdit,
       clientCredentials: handedOver,
     }: McpServerRegistration): Promise<McpServerDefinition> => {
-      const tool = isEdit ? 'core_mcpserver_update' : 'core_mcpserver_create';
+      const tool = isEdit ? CONNECTOR_UPDATE_TOOL : 'core_mcpserver_create';
       // Taken at once, so the values live only in this call's scope.
       const clientCredentials = handedOver?.take();
       const definition = clientCredentials
         ? withoutClientSecretRef(composed)
         : composed;
       const { displayName, tags } = definition;
-      const schemaOf = (name: string, asking: string) =>
+      // `retry`: asked once more after a failure, for a read every create
+      // needs now (the preset) that a transient fault should not stop.
+      const schemaOf = (name: string, asking: string, retry = 0) =>
         queryClient
-          .fetchQuery(toolArgumentsQuery(musterApi, name, installation))
+          .fetchQuery({
+            ...toolArgumentsQuery(musterApi, name, installation),
+            retry,
+            retryDelay: 500,
+          })
           .then(detail => detail.inputSchema)
           .catch(error => {
             if (isMusterAuthError(error)) {
@@ -107,22 +130,68 @@ export function useRegisterMcpServer() {
               }). Nothing was saved; try again.`,
             );
           });
+      // A create carries the preset the governance mode pre-selects, where
+      // muster takes one (it requires one once it has tool approval). muster
+      // stores only the preset's rule then (no tools are listed yet); the
+      // Test & Tools step writes each tool's setting once it lists them. A
+      // mode that cannot be read sends Recommended, never Allow all.
+      const governanceMode = async () => {
+        const list = await queryClient
+          .fetchQuery({
+            queryKey: musterServerListQueryKey(installation),
+            queryFn: () => musterApi.listServers(installation),
+            staleTime: 30_000,
+            retry: false,
+          })
+          .catch(() => undefined);
+        const fromList = governanceModeOf(list);
+        if (fromList) {
+          return fromList;
+        }
+        return governanceModeOf(
+          await queryClient
+            .fetchQuery({
+              queryKey: musterServerInfoQueryKey(installation),
+              queryFn: () => musterApi.getServerInfo(installation),
+              staleTime: 10 * 60_000,
+              retry: false,
+            })
+            .catch(() => undefined),
+        );
+      };
+      const preset =
+        tool === 'core_mcpserver_create'
+          ? defaultPresetFor(await governanceMode())
+          : undefined;
       const definitionFor = async (
         name: string,
       ): Promise<McpServerDefinition> => {
-        if (displayName === undefined && tags === undefined) {
+        const asksPreset = preset !== undefined && name === tool;
+        if (displayName === undefined && tags === undefined && !asksPreset) {
           return definition;
         }
-        const inputSchema = await schemaOf(
-          name,
-          `keeps the connector's ${displayName === undefined ? 'tags' : 'name'}`,
-        );
-        const sent = { ...definition };
+        let asking = 'takes a tool approval preset';
+        if (displayName !== undefined) {
+          asking = "keeps the connector's name";
+        } else if (tags !== undefined) {
+          asking = "keeps the connector's tags";
+        }
+        // Only the preset asks: every create reads the schema for it, where
+        // none did before, so a transient fault is asked about once more.
+        const onlyPreset =
+          displayName === undefined && tags === undefined && asksPreset;
+        const inputSchema = await schemaOf(name, asking, onlyPreset ? 1 : 0);
+        const sent: McpServerDefinition & { preset?: string } = {
+          ...definition,
+        };
         if (!takesArgument(inputSchema, 'displayName')) {
           delete sent.displayName;
         }
         if (!takesArgument(inputSchema, 'tags')) {
           delete sent.tags;
+        }
+        if (asksPreset && takesArgument(inputSchema, 'preset')) {
+          sent.preset = preset;
         }
         return sent;
       };
@@ -130,13 +199,24 @@ export function useRegisterMcpServer() {
       // typed a client: say what it cannot do instead (the sign-in step
       // hides the fields once it knows).
       const takesClient = async () => {
-        if (
-          clientCredentials &&
-          !takesArgument(
-            await schemaOf(tool, 'can store a client'),
-            'clientCredentials',
-          )
-        ) {
+        if (!clientCredentials) {
+          return;
+        }
+        const asking = 'can store a client';
+        // An edit stores it through `core_mcpserver_connect`, or the one
+        // update of a muster without it.
+        const takes = isEdit
+          ? editTakesArgument('clientCredentials', {
+              update: await schemaOf(tool, asking),
+              connect:
+                (await connectToolSchema(
+                  queryClient,
+                  musterApi,
+                  installation,
+                )) ?? null,
+            })
+          : takesArgument(await schemaOf(tool, asking), 'clientCredentials');
+        if (!takes) {
           throw new Error(
             'Muster on this installation cannot store a client yet. Nothing was saved; choose Existing Secret to name a Secret that holds the client instead.',
           );
@@ -152,14 +232,18 @@ export function useRegisterMcpServer() {
         validated,
         installation,
       );
-      await musterApi.callTool(
-        tool,
-        clientCredentials ? { ...sent, clientCredentials } : sent,
-        installation,
-      );
-      // What was written, without the credentials: the caller keeps it as the
-      // base of later saves.
-      return sent;
+      const args = clientCredentials ? { ...sent, clientCredentials } : sent;
+      if (isEdit) {
+        await writeConnectorEdit(queryClient, musterApi, args, installation);
+      } else {
+        await musterApi.callTool(tool, args, installation);
+      }
+      // What was written, without the credentials or the preset (a create's
+      // only): the caller keeps it as the base of later saves.
+      const { preset: _preset, ...written } = sent as McpServerDefinition & {
+        preset?: string;
+      };
+      return written;
     },
     event: (_data, { isEdit, startedFromEdit, authMode }) => {
       if (!isEdit) {

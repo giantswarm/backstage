@@ -4,7 +4,15 @@ import { analyticsApiRef } from '@backstage/core-plugin-api';
 import { mockApis, TestApiProvider } from '@backstage/test-utils';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
+import {
+  baseDataSet,
+  inInstallation,
+} from '@giantswarm/backstage-plugin-gs-common/fixtures';
+
 import { musterApiRef, type MusterApi } from '../../apis';
+import { musterKubernetesObjectsOf } from '../../apis/fixtures';
+import { musterFixtureApi } from '../../apis/fixtures/MusterFixtureApi';
+import { MCPServer } from '../../lib/k8s/MCPServer';
 import type { McpServerDefinition } from '../../lib/mcpServerDefinition';
 import {
   OneTimeClientCredentials,
@@ -14,7 +22,19 @@ import {
 
 const callTool = jest.fn();
 const describeTool = jest.fn();
-const musterApi = { callTool, describeTool } as unknown as MusterApi;
+/**
+ * A muster from before the split connector writes unless a test says
+ * otherwise: no `core_mcpserver_connect`, one update that takes everything.
+ * The split is tested against the fixture muster, which declares and refuses
+ * as muster does (`against muster with split connector writes`).
+ */
+const musterApi = {
+  callTool,
+  describeTool: (name: string, installation?: string) =>
+    name === 'core_mcpserver_connect'
+      ? Promise.reject(new Error('tool not found: core_mcpserver_connect'))
+      : describeTool(name, installation),
+} as unknown as MusterApi;
 const analyticsApi = mockApis.analytics.mock();
 
 const definition: McpServerDefinition = {
@@ -26,13 +46,13 @@ const definition: McpServerDefinition = {
 
 const registration: McpServerRegistration = {
   definition,
-  installation: 'gazelle',
+  installation: 'example',
   authMode: 'own-account',
   isEdit: false,
   startedFromEdit: false,
 };
 
-function renderRegister() {
+function renderRegister(api: MusterApi = musterApi) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -43,7 +63,7 @@ function renderRegister() {
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider
       apis={[
-        [musterApiRef, musterApi],
+        [musterApiRef, api],
         [analyticsApiRef, analyticsApi],
       ]}
     >
@@ -170,7 +190,7 @@ describe('useRegisterMcpServer', () => {
           [
             'core_mcpserver_validate',
             { ...definition, auth: sentAuth },
-            'gazelle',
+            'example',
           ],
           [
             tool,
@@ -182,7 +202,7 @@ describe('useRegisterMcpServer', () => {
                 clientSecret: SECRET,
               },
             },
-            'gazelle',
+            'example',
           ],
         ]);
         // What the caller keeps as the base of later saves has no values.
@@ -261,8 +281,8 @@ describe('useRegisterMcpServer', () => {
     await act(() => result.current.mutateAsync(registration));
 
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_create', definition, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_create', definition, 'example'],
     ]);
     expect(invalidateQueries).toHaveBeenCalledWith({ queryKey: ['muster'] });
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
@@ -284,7 +304,7 @@ describe('useRegisterMcpServer', () => {
     expect(callTool).toHaveBeenLastCalledWith(
       'core_mcpserver_update',
       definition,
-      'gazelle',
+      'example',
     );
     expect(analyticsApi.captureEvent).not.toHaveBeenCalled();
   });
@@ -303,7 +323,7 @@ describe('useRegisterMcpServer', () => {
     expect(callTool).toHaveBeenLastCalledWith(
       'core_mcpserver_update',
       definition,
-      'gazelle',
+      'example',
     );
     expect(analyticsApi.captureEvent).toHaveBeenCalledTimes(1);
     expect(analyticsApi.captureEvent).toHaveBeenCalledWith(
@@ -328,11 +348,11 @@ describe('useRegisterMcpServer', () => {
 
     expect(describeTool).toHaveBeenCalledWith(
       'core_mcpserver_create',
-      'gazelle',
+      'example',
     );
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', named, 'gazelle'],
-      ['core_mcpserver_create', named, 'gazelle'],
+      ['core_mcpserver_validate', named, 'example'],
+      ['core_mcpserver_create', named, 'example'],
     ]);
     expect(sent).toEqual(named);
   });
@@ -352,11 +372,11 @@ describe('useRegisterMcpServer', () => {
 
     expect(describeTool).toHaveBeenCalledWith(
       'core_mcpserver_update',
-      'gazelle',
+      'example',
     );
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_update', definition, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_update', definition, 'example'],
     ]);
     expect(sent).toEqual(definition);
   });
@@ -374,8 +394,8 @@ describe('useRegisterMcpServer', () => {
     );
 
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_create', named, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_create', named, 'example'],
     ]);
   });
 
@@ -428,8 +448,8 @@ describe('useRegisterMcpServer', () => {
     );
 
     expect(callTool.mock.calls).toEqual([
-      ['core_mcpserver_validate', definition, 'gazelle'],
-      ['core_mcpserver_create', tagged, 'gazelle'],
+      ['core_mcpserver_validate', definition, 'example'],
+      ['core_mcpserver_create', tagged, 'example'],
     ]);
   });
 
@@ -456,12 +476,233 @@ describe('useRegisterMcpServer', () => {
     expect(callTool).not.toHaveBeenCalled();
   });
 
-  it('asks for no schema when there is no display name to send', async () => {
+  it('asks for no schema but which edit writes muster has when there is no display name to send', async () => {
     const { result } = renderRegister();
 
-    await act(() => result.current.mutateAsync(registration));
+    await act(() =>
+      result.current.mutateAsync({ ...registration, isEdit: true }),
+    );
 
+    // Only core_mcpserver_connect, which this muster does not have.
     expect(describeTool).not.toHaveBeenCalled();
+  });
+
+  describe('against muster with split connector writes', () => {
+    const INSTALLATION = 'meadow';
+    const fixtureApi = musterFixtureApi([]);
+    const stored = () => {
+      const connector = inInstallation(
+        baseDataSet().connectors,
+        INSTALLATION,
+      ).find(c => c.state === 'Connected')!;
+      const object = musterKubernetesObjectsOf(INSTALLATION).find(
+        o => o.kind === 'MCPServer' && o.metadata.name === connector.name,
+      )!;
+      return new MCPServer(object as MCPServer['jsonData'], INSTALLATION);
+    };
+
+    it('writes an edit of the address and the description through connect and update', async () => {
+      const server = stored();
+      const calls = jest.spyOn(fixtureApi, 'callTool');
+      const { result } = renderRegister(fixtureApi);
+
+      await act(() =>
+        result.current.mutateAsync({
+          ...registration,
+          installation: INSTALLATION,
+          isEdit: true,
+          startedFromEdit: true,
+          definition: {
+            name: server.getName(),
+            type: 'streamable-http',
+            url: 'https://moved.example.com/mcp',
+            description: 'Moved.',
+            autoStart: true,
+          },
+        }),
+      );
+
+      expect(calls.mock.calls.map(([tool, args]) => [tool, args])).toEqual([
+        ['core_mcpserver_validate', expect.anything()],
+        [
+          'core_mcpserver_connect',
+          {
+            name: server.getName(),
+            type: 'streamable-http',
+            url: 'https://moved.example.com/mcp',
+          },
+        ],
+        [
+          'core_mcpserver_update',
+          { name: server.getName(), description: 'Moved.', autoStart: true },
+        ],
+      ]);
+      expect(stored().getUrl()).toBe('https://moved.example.com/mcp');
+      expect(stored().getDescription()).toBe('Moved.');
+      calls.mockRestore();
+    });
+
+    it('stores a client through connect', async () => {
+      const server = stored();
+      const calls = jest.spyOn(fixtureApi, 'callTool');
+      const { result } = renderRegister(fixtureApi);
+
+      await act(() =>
+        result.current.mutateAsync({
+          ...registration,
+          installation: INSTALLATION,
+          isEdit: true,
+          definition: {
+            name: server.getName(),
+            type: 'streamable-http',
+            url: server.getUrl() ?? 'https://x.example.com/mcp',
+            autoStart: true,
+            auth: {
+              type: 'oauth',
+              authorizationServer: { issuer: 'https://idp.example.com' },
+            },
+          },
+          clientCredentials: new OneTimeClientCredentials({
+            clientId: 'id',
+            clientSecret: 'secret',
+          }),
+        }),
+      );
+
+      const connectCall = calls.mock.calls.find(
+        ([tool]) => tool === 'core_mcpserver_connect',
+      );
+      expect(connectCall?.[1]).toHaveProperty('clientCredentials');
+      const updateCall = calls.mock.calls.find(
+        ([tool]) => tool === 'core_mcpserver_update',
+      );
+      expect(updateCall?.[1]).toEqual({
+        name: server.getName(),
+        autoStart: true,
+      });
+      calls.mockRestore();
+    });
+  });
+
+  describe('tool approval preset on create', () => {
+    /** A muster whose create takes `preset` (tool approval). */
+    const withPreset = (name: string) =>
+      Promise.resolve({
+        name,
+        inputSchema: {
+          type: 'object',
+          properties: {
+            name: { type: 'string' },
+            ...(name === 'core_mcpserver_create'
+              ? { preset: { type: 'string' } }
+              : {}),
+          },
+        },
+      });
+
+    /**
+     * muster-backend's `/servers` (core_mcpserver_list, which reports the
+     * mode) for the test, and `/server-info` as production serves it (no
+     * mode); restored after it.
+     */
+    const serving = (list: () => Promise<unknown>) => {
+      const api = musterApi as {
+        listServers?: unknown;
+        getServerInfo?: unknown;
+      };
+      api.listServers = jest.fn(list);
+      api.getServerInfo = jest.fn(() => Promise.resolve({}));
+    };
+    const listing = (governance?: string) => () =>
+      Promise.resolve({ mcpServers: [], ...(governance && { governance }) });
+    afterEach(() => {
+      const api = musterApi as {
+        listServers?: unknown;
+        getServerInfo?: unknown;
+      };
+      delete api.listServers;
+      delete api.getServerInfo;
+    });
+
+    it("sends the trusted mode's Allow all to a create that takes a preset, and only there", async () => {
+      describeTool.mockImplementation(withPreset);
+      serving(listing('trusted'));
+      const { result } = renderRegister();
+
+      let sent: McpServerDefinition | undefined;
+      await act(async () => {
+        sent = await result.current.mutateAsync(registration);
+      });
+
+      expect(callTool.mock.calls).toEqual([
+        ['core_mcpserver_validate', definition, 'example'],
+        [
+          'core_mcpserver_create',
+          { ...definition, preset: 'allow-all' },
+          'example',
+        ],
+      ]);
+      // Later saves (updates) take no preset.
+      expect(sent).toEqual(definition);
+    });
+
+    it.each([
+      ['on a governed platform', listing('governed')],
+      ['when muster reports no mode (an older muster)', listing()],
+      [
+        'when the mode cannot be read',
+        () => Promise.reject(new Error('upstream 502')),
+      ],
+    ])('sends Recommended %s, never Allow all', async (_, answer) => {
+      describeTool.mockImplementation(withPreset);
+      serving(answer);
+      const { result } = renderRegister();
+
+      await act(() => result.current.mutateAsync(registration));
+
+      expect(callTool).toHaveBeenLastCalledWith(
+        'core_mcpserver_create',
+        { ...definition, preset: 'recommended' },
+        'example',
+      );
+    });
+
+    it('asks for the preset once more after a transient failure, and creates', async () => {
+      let failed = false;
+      describeTool.mockImplementation((name: string) => {
+        if (name === 'core_mcpserver_create' && !failed) {
+          failed = true;
+          return Promise.reject(new Error('upstream 502'));
+        }
+        return withPreset(name);
+      });
+      serving(listing('trusted'));
+      const { result } = renderRegister();
+
+      await act(() => result.current.mutateAsync(registration));
+
+      expect(callTool).toHaveBeenLastCalledWith(
+        'core_mcpserver_create',
+        { ...definition, preset: 'allow-all' },
+        'example',
+      );
+    });
+
+    it('sends no preset to a muster whose create does not take one', async () => {
+      const { result } = renderRegister();
+
+      await act(() => result.current.mutateAsync(registration));
+
+      expect(describeTool).toHaveBeenCalledWith(
+        'core_mcpserver_create',
+        'example',
+      );
+      expect(callTool).toHaveBeenLastCalledWith(
+        'core_mcpserver_create',
+        definition,
+        'example',
+      );
+    });
   });
 
   it('writes nothing and reports nothing when validation refuses', async () => {

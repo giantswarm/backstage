@@ -182,6 +182,11 @@ export interface MusterInstallationInfo {
   /** The aggregator's MCP endpoint URL (shown atop the Servers view). */
   endpoint?: string;
   /**
+   * Where muster serves its own pages (approval page, sign-in start), when
+   * configured because they are not on the endpoint's host.
+   */
+  publicUrl?: string;
+  /**
    * Whether requests need the person's token: always for a derived
    * installation, for a configured one when it declares an `authProvider`.
    */
@@ -265,10 +270,122 @@ export interface McpServerRuntime {
    * muster#1050). Servers registered earlier only carry `registeredBy`.
    */
   registeredByEmail?: string;
+  /**
+   * `spec.approval`, the connector's tool approval settings; absent when the
+   * connector has none (every tool `Allow`, not reviewed) and from a muster
+   * that does not know them.
+   */
+  approval?: MCPServerApproval;
+  /**
+   * The MCPServer's `metadata.generation`, which
+   * `core_mcpserver_set_approval` takes as `expectedGeneration` to refuse a
+   * write over a change made since (muster with that precondition).
+   */
+  generation?: number;
 }
+
+/**
+ * A connector's tool approval settings as stored (`spec.approval` of the
+ * MCPServer): `rule` for every tool without its own entry, new ones
+ * included, and `tools` from the server's own tool name (no prefix) to its
+ * setting. Values are kept as strings: one muster does not know counts as
+ * `Ask` (`storedSetting`).
+ */
+export interface MCPServerApproval {
+  /** `Allow`, `Ask` or `Block` (tools added later are hidden). */
+  rule?: string;
+  /** `Allow`, `Ask` or `Block` per tool. */
+  tools?: Record<string, string>;
+}
+
+/** Where a tool's effective approval comes from, as muster reports it. */
+export type ToolApprovalSource =
+  | 'tool'
+  | 'connector'
+  | 'unreviewed'
+  | 'builtin'
+  // The connector's settings could not be read; muster reports them as `ask`.
+  | 'unavailable'
+  | 'agent'
+  | 'agent-exception'
+  | 'governance';
+
+/**
+ * A tool's effective approval for the caller, as `filter_tools` and
+ * `describe_tool` report it (muster's tool approval).
+ */
+export interface ToolApproval {
+  setting: 'allow' | 'ask' | 'block';
+  source: ToolApprovalSource;
+  /** No own entry on a connector that has settings: it follows the rule. */
+  new?: boolean;
+  /**
+   * Set on a tool whose setting is `ask` when approvals cannot work right now
+   * (a prerequisite is missing, such as muster's shared storage or its browser
+   * sign-in): the reason, in muster's words. Calls to the tool are refused
+   * with it. Not `source: 'unavailable'`, which says the connector's settings
+   * could not be read.
+   */
+  unavailable?: string;
+  /**
+   * Reported for an agent's tool list (`filter_tools` with `agentTools`, a
+   * Session's bound list): the entry of the list that decided the agent's
+   * setting (`default` for the list's default). Absent when no entry with a
+   * setting selects the tool.
+   */
+  entry?: string;
+  /** With {@link entry}: the connector's own setting, before the agent's. */
+  admin?: { setting: 'allow' | 'ask' | 'block'; source: ToolApprovalSource };
+}
+
+/**
+ * An agent's tool list as `filter_tools` and `describe_tool` take it for
+ * reporting (`agentTools`, tool approval): the entries in the
+ * agent chart's shape (a selector, or `{selector: Allow|Ask|Block}`), the
+ * list's default and the agent's grants. It never changes what runs.
+ */
+export interface AgentToolsArgument {
+  tools: Array<string | Record<string, string>>;
+  default?: string;
+  /**
+   * The agent's grants: each names the server's own names of the tools it
+   * covers (`tools`); muster lifts only those, and a grant without them
+   * lifts nothing.
+   */
+  grants?: Array<{
+    entry: string;
+    server: string;
+    uid?: string;
+    tools?: string[];
+  }>;
+}
+
+/** The MCPServer behind a server tool, as `filter_tools` reports it with `agentTools`. */
+export interface ToolConnectorRef {
+  /** muster's server key. */
+  server: string;
+  namespace?: string;
+  name?: string;
+  /** The MCPServer's `metadata.uid`; empty in muster's filesystem mode. */
+  uid?: string;
+  /** The tool's own name on that connector (what a grant's `tools` names). */
+  tool?: string;
+}
+
+/**
+ * The installation's governance mode: `trusted` (the default) or
+ * `governed`. Only picks the connector wizard's pre-selected preset here.
+ */
+export type GovernanceMode = 'trusted' | 'governed';
 
 export interface McpServerListResponse {
   mcpServers: McpServerRuntime[] | null;
+  /**
+   * The installation's governance mode, as `core_mcpserver_list` reports it
+   * (muster with tool approval); absent from an older muster. Read through
+   * `governanceModeOf`, which never takes an unknown value for `trusted`.
+   */
+  governance?: string;
 }
 
 /** A connector as muster-backend names it (`/servers/names`). */
@@ -292,6 +409,11 @@ export interface ConnectorNamesResponse {
  */
 export interface MusterServerInfoResponse {
   icon?: string;
+  /**
+   * The installation's governance mode, once muster reports it. Absent is
+   * unknown, never `trusted` (`governanceModeOf`).
+   */
+  governance?: GovernanceMode;
   unavailable?: boolean;
 }
 
@@ -324,6 +446,19 @@ export interface ToolSummary {
    * Omitted when the server declares none.
    */
   annotations?: ToolAnnotations;
+  /** The tool's effective approval for the caller; absent from older musters. */
+  approval?: ToolApproval;
+  /**
+   * Whether the caller may change the settings of the tool's connector (may
+   * `update` MCPServers in its namespace); absent for core tools, workflows
+   * and from older musters.
+   */
+  connectorAdmin?: boolean;
+  /**
+   * With `agentTools`: the connectors behind a server tool (its server, or
+   * every member of a family tool).
+   */
+  connectors?: ToolConnectorRef[];
 }
 
 /** `tool` = an aggregated server's tool, `workflow` = `workflow_<name>`, `core` = `core_*`. */
@@ -369,6 +504,13 @@ export interface FilterToolsResponse {
   toolset_unmatched?: string[];
   /** The presets muster knows, when `include_presets` or a `toolset` was given. */
   presets?: ToolsetPreset[];
+  /** The installation's governance mode (tool approval): `trusted` or `governed`. */
+  governance?: string;
+  /**
+   * With `agentTools`: the list as muster evaluated it. Its absence is a
+   * muster that does not evaluate agent lists (contract §5, C-07).
+   */
+  agentTools?: { entries?: unknown[]; settings?: unknown[] };
 }
 
 export interface FilterToolsOptions {
@@ -387,6 +529,11 @@ export interface FilterToolsOptions {
   toolset?: string[];
   /** Ask muster to list the presets it knows in the response. */
   includePresets?: boolean;
+  /**
+   * Report approvals as this agent's tool list would see them (reporting
+   * only). Its selectors narrow the listing like `toolset`; never both.
+   */
+  agentTools?: AgentToolsArgument;
 }
 
 /**
@@ -472,6 +619,10 @@ export interface ToolDetail {
   server?: string;
   kind?: ToolKind;
   annotations?: ToolAnnotations;
+  /** See {@link ToolSummary.approval}. */
+  approval?: ToolApproval;
+  /** See {@link ToolSummary.connectorAdmin}. */
+  connectorAdmin?: boolean;
 }
 
 /** A server the aggregator cannot use until the caller authenticates. */
@@ -776,7 +927,114 @@ export interface MusterApi {
     server: SignInTarget,
     installation?: string,
   ): Promise<ServerSignOutResult>;
+  /**
+   * A one-time sign-in handoff ticket for one of muster's own pages (its
+   * approval page, its connector sign-in start) at `url`, asked with the
+   * person's token, so the page opens signed in as them instead of asking
+   * them to sign in to muster again (add it to the link as `handoff`).
+   * `undefined` when muster issues none; the link then opens as is. Ask only
+   * when the person opens that page.
+   */
+  requestHandoff(
+    url: string,
+    installation?: string,
+  ): Promise<string | undefined>;
+  /**
+   * The person's pending approval behind a link to muster's approval page
+   * (`url`), as muster's decision API shows it to the portal: what muster's
+   * page shows, made safe the same way, with the digest a decision carries.
+   * A refusal when muster shows nothing (another person's, expired, the
+   * portal not trusted there, ...).
+   */
+  getApproval(url: string, installation?: string): Promise<ApprovalLookup>;
+  /**
+   * Decides that approval as the person, with the digest of the view they
+   * saw. Call only on the person's click; never from message content.
+   */
+  decideApproval(
+    url: string,
+    decision: 'approve' | 'decline',
+    digest: string,
+    installation?: string,
+  ): Promise<ApprovalDecisionResult>;
 }
+
+/** An argument, change or preset entry of an approval, made visible by muster. */
+export type ApprovalValue = {
+  key: string;
+  label: string;
+  value: string;
+  type?: string;
+};
+
+/** A workflow step of an approval. */
+export type ApprovalStepView = {
+  id: string;
+  label: string;
+  tool: string;
+  asks?: boolean;
+  workflow?: string;
+  arguments?: ApprovalValue[];
+};
+
+/**
+ * What muster's decision API shows of a pending approval
+ * (contract-muster-approval.md §5b). Every text an agent or a connector chose
+ * has its invisible characters marked (`⟨U+XXXX⟩`); render it as text only.
+ */
+export type ApprovalView = {
+  id: string;
+  status: string;
+  heading: string;
+  message: string;
+  tool: { title: string; name: string; exposed?: string; kind: string };
+  connector?: { displayName: string; server: string };
+  changesData: boolean;
+  arguments: ApprovalValue[];
+  changes?: Array<{ field: string; old: string; new: string }>;
+  preset?: ApprovalValue[];
+  steps?: ApprovalStepView[];
+  agentSays?: string;
+  /**
+   * The asking agent. `displayName` is the name people know it by, from the
+   * session binding agent-manager sent (absent without one): show it as the
+   * name and `namespace/name` as secondary detail.
+   */
+  agent?: { namespace?: string; name: string; displayName?: string };
+  why: { setting: string; source: string };
+  actsFor: { name?: string; subject: string; issuer: string };
+  callerKind: string;
+  /** The asking session's id, truncated. */
+  session?: string;
+  /** The OAuth client the asking session signed in through. */
+  client?: string;
+  installation?: string;
+  canonicalArguments: string;
+  argumentsHash: string;
+  expiresAt: string;
+  digest: string;
+};
+
+/** Why muster showed or decided nothing. */
+export type ApprovalRefusal = {
+  /** muster's HTTP status; 502 when it could not be reached. */
+  status: number;
+  /**
+   * `untrusted_client`, `untrusted_workload`, `acting_party`, `foreign`,
+   * `not_found`, `decided`, `expired`, `changed`, `bad_request`,
+   * `unavailable`, `unreachable`.
+   */
+  error: string;
+  message: string;
+  /** For `decided`: what stands. */
+  decided?: string;
+};
+
+export type ApprovalLookup =
+  { view: ApprovalView } | { refusal: ApprovalRefusal };
+
+export type ApprovalDecisionResult =
+  { status: 'approved' | 'declined' } | { refusal: ApprovalRefusal };
 
 /**
  * What a sign-in is for: an aggregated server by name, or a provider App

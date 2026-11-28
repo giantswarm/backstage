@@ -3,6 +3,7 @@ import type { MusterApi } from '@giantswarm/backstage-plugin-muster';
 
 import {
   AGENT_MANAGER_TOOLS,
+  AgentManagerError,
   agentManagerToolName,
   classifyAgentManagerError,
   type AgentManagerAgent,
@@ -13,6 +14,11 @@ import {
   type AgentSpec,
   type AgentStatus,
   type AgentUpdate,
+  type AgentApprovalChange,
+  type AgentApprovalGrant,
+  type SetAgentApprovalResult,
+  splitAgentUpdate,
+  agentGenerationOf,
   type WriteMode,
   type CommitAgentResult,
   type CreateAgentResult,
@@ -59,6 +65,64 @@ import type {
 function toolchainArgs(toolchains: StartSessionRequest['toolchains']) {
   if (!toolchains) return {};
   return toolchains.length > 0 ? { toolchains } : { noToolchains: true };
+}
+
+/** muster's answer for a tool it does not serve. */
+function isToolNotFound(error: unknown): boolean {
+  const message = error instanceof Error ? error.message : String(error);
+  return (
+    /tool not found|unknown tool|no tool/i.test(message) ||
+    (error instanceof Error && error.name === 'NotFoundError') ||
+    (error as { status?: number })?.status === 404
+  );
+}
+
+/**
+ * A refusal of the second write of an update, after the first landed: said
+ * so, keeping agent-manager's code and words.
+ */
+export class PartialAgentWriteError extends AgentManagerError {
+  constructor(
+    code: AgentManagerError['code'],
+    message: string,
+    /** The tool that refused; everything written before it landed. */
+    readonly failedTool: string,
+    options?: ErrorOptions,
+  ) {
+    super(code, message, options);
+  }
+}
+
+function partialWriteError(error: unknown, tool: AgentManagerTool): Error {
+  if (error instanceof AgentManagerError) {
+    return new PartialAgentWriteError(
+      error.code,
+      `Saved: the agent's name, description, instructions and model. Not saved (${tool} refused it): what it can reach and its approval settings. ${error.message}`,
+      tool,
+      { cause: error },
+    );
+  }
+  return error instanceof Error ? error : new Error(String(error));
+}
+
+/**
+ * A write after another of the same update: its precondition is the
+ * generation the one before wrote, when agent-manager reported it; without
+ * one, none (the first write already checked the read).
+ */
+function chainGeneration(
+  args: AgentUpdate,
+  previous: UpdateAgentResult,
+  update: AgentUpdate,
+): AgentUpdate {
+  if (update.expectedGeneration === undefined) {
+    return args;
+  }
+  const { expectedGeneration: _, ...rest } = args;
+  const written = agentGenerationOf(previous.agent);
+  return written === undefined
+    ? rest
+    : { ...rest, expectedGeneration: written };
 }
 
 /**
@@ -179,6 +243,43 @@ export class AgentManagerClient {
       throw new Error(modelNamespaceRefused(namespace));
     }
     return { organization };
+  }
+
+  private splitUpdates?: Promise<boolean>;
+
+  /**
+   * Whether this agent-manager splits an update over `update_agent` (what an
+   * agent is) and `update_agent_access` (what it can reach), as it does
+   * since tool approval: `update_agent_access` can be described. Read once
+   * per client. A failed read is an older agent-manager (one `update_agent`
+   * takes everything), or a transient failure, after which a new one refuses
+   * the single update in its own words before writing anything.
+   */
+  takesSplitUpdates(): Promise<boolean> {
+    // A muster API that describes no tools (a reduced one) has none to ask.
+    if (typeof this.musterApi.describeTool !== 'function') {
+      return Promise.resolve(false);
+    }
+    this.splitUpdates ??= Promise.resolve()
+      .then(() =>
+        this.musterApi.describeTool(
+          agentManagerToolName(AGENT_MANAGER_TOOLS.updateAgentAccess),
+          this.installation,
+        ),
+      )
+      .then(
+        detail => Boolean(detail),
+        error => {
+          // Only a tool muster does not know is an older agent-manager; any
+          // other failure is asked again next time, never remembered.
+          if (isToolNotFound(error)) {
+            return false;
+          }
+          this.splitUpdates = undefined;
+          throw error;
+        },
+      );
+    return this.splitUpdates;
   }
 
   private async call<T>(
@@ -315,24 +416,145 @@ export class AgentManagerClient {
     });
   }
 
-  /** Merges `update` into the release's values and writes it, as the person. */
+  /**
+   * The writes of one update, in order: `update_agent` with everything on an
+   * older agent-manager; on one with tool approval, `update_agent` with what
+   * the agent is, then `update_agent_access` with what it can reach, each
+   * only when it carries a field.
+   */
+  private async updateWrites(
+    update: AgentUpdate,
+  ): Promise<{ tool: AgentManagerTool; args: AgentUpdate }[]> {
+    if (!(await this.takesSplitUpdates())) {
+      return [{ tool: AGENT_MANAGER_TOOLS.updateAgent, args: update }];
+    }
+    const { describe, access } = splitAgentUpdate(update);
+    // The precondition goes with the first write; each next one carries the
+    // generation the one before it wrote (`chainGeneration`).
+    if (update.expectedGeneration !== undefined) {
+      const first = describe ?? access;
+      if (first) {
+        first.expectedGeneration = update.expectedGeneration;
+      }
+    }
+    const writes: { tool: AgentManagerTool; args: AgentUpdate }[] = [];
+    if (describe) {
+      writes.push({ tool: AGENT_MANAGER_TOOLS.updateAgent, args: describe });
+    }
+    if (access) {
+      writes.push({
+        tool: AGENT_MANAGER_TOOLS.updateAgentAccess,
+        args: access,
+      });
+    }
+    // Nothing to change still answers the agent as it is.
+    return writes.length > 0
+      ? writes
+      : [{ tool: AGENT_MANAGER_TOOLS.updateAgent, args: update }];
+  }
+
+  /**
+   * Merges `update` into the release's values and writes it, as the person:
+   * one write, or two on an agent-manager with tool approval. When the
+   * second is refused after the first landed, the refusal says so.
+   */
   async updateAgent(update: AgentUpdate): Promise<UpdateAgentResult> {
-    return this.call<UpdateAgentResult>(
-      AGENT_MANAGER_TOOLS.updateAgent,
-      await this.placed(update),
-    );
+    const writes = await this.updateWrites(update);
+    let merged: UpdateAgentResult | undefined;
+    for (const write of writes) {
+      let result: UpdateAgentResult;
+      const args = merged
+        ? chainGeneration(write.args, merged, update)
+        : write.args;
+      try {
+        result = await this.call<UpdateAgentResult>(
+          write.tool,
+          await this.placed(args),
+        );
+      } catch (error) {
+        throw merged ? partialWriteError(error, write.tool) : error;
+      }
+      merged = merged
+        ? {
+            ...result,
+            before: merged.before,
+            changed: [...new Set([...merged.changed, ...result.changed])],
+            dropped: [...(merged.dropped ?? []), ...(result.dropped ?? [])],
+            warnings: [...(merged.warnings ?? []), ...(result.warnings ?? [])],
+            ...((merged.sessionsUpdated === false ||
+              result.sessionsUpdated === false) && { sessionsUpdated: false }),
+          }
+        : result;
+    }
+    return merged!;
   }
 
   /**
    * Lands the update as a pull request in the owning GitOps repository instead
    * (`mode: commit`, giantswarm/agent-manager#24). Offered only when `get_info`
-   * reports the `commit` capability.
+   * reports the `commit` capability. On an agent-manager with tool approval a
+   * change to what the agent is and to what it can reach are a pull request
+   * each: the earlier one is in `earlier`.
    */
   async commitUpdateAgent(update: AgentUpdate): Promise<CommitAgentResult> {
-    return this.call<CommitAgentResult>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...(await this.placed(update)),
-      mode: 'commit',
-    });
+    const writes = await this.updateWrites(update);
+    const results: CommitAgentResult[] = [];
+    for (const write of writes) {
+      try {
+        results.push(
+          await this.call<CommitAgentResult>(write.tool, {
+            ...(await this.placed(write.args)),
+            mode: 'commit',
+          }),
+        );
+      } catch (error) {
+        throw results.length > 0 ? partialWriteError(error, write.tool) : error;
+      }
+    }
+    const last = results[results.length - 1];
+    return results.length > 1
+      ? { ...last, earlier: results.slice(0, -1) }
+      : last;
+  }
+
+  /**
+   * `set_agent_approval`: the settings on entries of the agent's tool list
+   * and its default — the only write that lets the agent skip a connector's
+   * `Ask` (agent-manager checks the person is that connector's admin and
+   * records the grant). Live only for a grant: a release in git carries none.
+   */
+  async setAgentApproval(
+    namespace: string,
+    name: string,
+    change: AgentApprovalChange,
+    mode: WriteMode = 'apply',
+  ): Promise<SetAgentApprovalResult & CommitAgentResult> {
+    return this.call<SetAgentApprovalResult & CommitAgentResult>(
+      AGENT_MANAGER_TOOLS.setAgentApproval,
+      {
+        ...(await this.placed({ namespace, name })),
+        ...change,
+        ...(mode === 'commit' ? { mode } : {}),
+      },
+    );
+  }
+
+  /**
+   * `list_approval_grants`: the agents of a namespace that may skip a
+   * connector's `Ask`, and who let them. Read as the person.
+   */
+  async listApprovalGrants(options: {
+    namespace?: string;
+    server?: string;
+  }): Promise<AgentApprovalGrant[]> {
+    const result = await this.call<{ grants?: AgentApprovalGrant[] }>(
+      AGENT_MANAGER_TOOLS.listApprovalGrants,
+      {
+        ...(options.namespace && (await this.agentPlace(options.namespace))),
+        ...(options.server && { server: options.server }),
+      },
+    );
+    return result.grants ?? [];
   }
 
   /**
@@ -345,8 +567,12 @@ export class AgentManagerClient {
   async dryRunCommitUpdateAgent(
     update: AgentUpdate,
   ): Promise<UpdateAgentCommitDryRun> {
-    return this.call<UpdateAgentCommitDryRun>(AGENT_MANAGER_TOOLS.updateAgent, {
-      ...(await this.placed(update)),
+    // On an agent-manager with tool approval, the write that carries what the
+    // agent can reach (skills, Harness) is the one that would be refused.
+    const writes = await this.updateWrites(update);
+    const write = writes[writes.length - 1];
+    return this.call<UpdateAgentCommitDryRun>(write.tool, {
+      ...(await this.placed(write.args)),
       mode: 'commit',
       dryRun: true,
     });

@@ -13,7 +13,10 @@ import {
 } from '@giantswarm/backstage-plugin-kubernetes-react';
 
 import type {
+  AgentApprovalChange,
+  AgentApprovalGrant,
   AgentManagerAgent,
+  AgentToolEntry,
   AgentManagerEgressPolicy,
   AgentManagerModelConfig,
   AgentManifests,
@@ -83,6 +86,17 @@ import { MODEL_CONFIG_NAMESPACE } from '../../lib/modelConfigs';
 import { DEFAULT_CACHE_TTL, providerSettings } from '../../lib/modelSettings';
 import { PLATFORM_TENANT_NAMESPACE } from '../../lib/tenants';
 import { FIXTURE_USER } from './fixtureIdentity';
+// eslint-disable-next-line @backstage/no-mixed-plugin-imports -- the seeded exception is on a connector of muster's fixture.
+import { musterAgentToolReportOf } from '@giantswarm/backstage-plugin-muster/fixtures';
+import {
+  grantsOfApproval,
+  refuseAllowOverAsk,
+  refuseOtherToolsArgs,
+  settleGrants,
+  takesToolApproval,
+  toolListOf,
+} from './agentApprovalFixtures';
+import { entrySelector, isApprovalSetting } from '../../lib/agentApproval';
 import { kagentFixtureState, KagentFixtureState } from './kagentFixtureState';
 
 /**
@@ -209,7 +223,29 @@ type StoredAgent = FixtureAgentRecord & {
   settledState?: AgentState;
   /** The model of the generation the controller last reported on. */
   previousModelConfig?: string;
+  /** agent-manager's own records of the agent's exceptions (tool approval). */
+  grants?: AgentApprovalGrant[];
 };
+
+/** What `set_agent_approval` declares. */
+const SET_APPROVAL_ARGS = new Set([
+  'name',
+  'namespace',
+  'organization',
+  'cluster',
+  'settings',
+  'default',
+  'expectedGeneration',
+  'mode',
+  'dryRun',
+  'force',
+  'repository',
+  'branch',
+  'path',
+]);
+
+/** Who granted the exception the data set seeds: not the guest. */
+export const SEEDED_GRANTOR = 'dana@example.com';
 
 type StoredOperation = {
   installation: string;
@@ -346,7 +382,12 @@ function valuesOf(agent: FixtureAgentRecord): Record<string, unknown> {
       ...(agent.iconUrl && { iconUrl: agent.iconUrl }),
       skills: agent.skills ?? [],
       plugins: agent.plugins ?? [],
-      toolset: agent.toolset ?? FIXTURE_TOOLSET,
+      ...(agent.tools
+        ? {
+            tools: agent.tools,
+            ...(agent.defaultApproval && { default: agent.defaultApproval }),
+          }
+        : { toolset: agent.toolset ?? FIXTURE_TOOLSET }),
       egress: agent.egress ?? [],
       egressPolicyRefs: agent.egressPolicyRefs ?? [],
       ...(agent.defaultWorkspace && {
@@ -482,6 +523,99 @@ function agentCommit(
   };
 }
 
+/**
+ * One exception the data set starts with, so the agent's Tools step, its
+ * detail and the connector's Tools tab show one, and saving shows it go: on
+ * the last ready agent whose organization's connector muster's fixture
+ * starts reviewed, an `Allow` over the connector's first asking tool,
+ * granted by someone else. The guest is no admin of an organization's
+ * connector, so a save of theirs drops it.
+ */
+function seedException(
+  installation: string,
+  agents: Map<string, StoredAgent>,
+): void {
+  for (const agent of [...agents.values()].reverse()) {
+    if (
+      agent.state !== 'ready' ||
+      agent.namespace === PLATFORM_TENANT_NAMESPACE
+    ) {
+      continue;
+    }
+    const connector = `server:${agent.namespace}/wiki`;
+    let report;
+    try {
+      report = musterAgentToolReportOf(installation, { tools: [connector] });
+    } catch {
+      continue;
+    }
+    const asking = report.find(
+      tool => tool.approval?.setting === 'ask' && tool.connectors?.length,
+    );
+    if (!asking) {
+      continue;
+    }
+    const entry = `tool:${asking.name}`;
+    agent.toolset = [...FIXTURE_TOOLSET, connector, entry];
+    agent.tools = [...FIXTURE_TOOLSET, connector, { [entry]: 'Allow' }];
+    const ref = asking.connectors![0];
+    agent.grants = [
+      {
+        entry,
+        server: ref.server,
+        namespace: ref.namespace,
+        connectorUid: ref.uid,
+        ...(ref.tool && { tools: [ref.tool] }),
+        grantedBy: SEEDED_GRANTOR,
+        grantedAt: new Date(Date.now() - 3 * DAY).toISOString(),
+        generation: agent.generation ?? 1,
+      },
+    ];
+    return;
+  }
+}
+
+/**
+ * agent-manager's stale-write refusal: the release moved past the generation
+ * the write was composed from.
+ */
+function mustBeAt(agent: StoredAgent, expected: unknown): void {
+  const now = agent.generation ?? 1;
+  if (typeof expected === 'number' && expected !== now) {
+    throw refusal(
+      'conflict',
+      `agent ${agent.namespace}/${agent.name} changed since it was read (generation ${now} now, expectedGeneration ${expected}): read it again with get_agent and apply the change to that`,
+    );
+  }
+}
+
+/**
+ * The chart an organization's older agent chart source serves: the first
+ * organization of {@link INCOMPLETE_MODEL_INSTALLATION}'s namespace, so
+ * settings there are refused as agent-manager refuses them.
+ */
+export const OLDER_CHART = '1.4.0';
+
+/** The installation states whose first organization serves {@link OLDER_CHART}. */
+const OLDER_CHART_INSTALLATIONS = new WeakSet<InstallationState>();
+
+function servesOlderChart(
+  state: InstallationState,
+  namespace: string,
+): boolean {
+  return (
+    state.organizations.find(organization => organization.namespace)
+      ?.namespace === namespace &&
+    namespace !== PLATFORM_TENANT_NAMESPACE &&
+    OLDER_CHART_INSTALLATIONS.has(state)
+  );
+}
+
+/** A list's selectors: what the chart renders as the toolset header. */
+function selectorsOf(tools: readonly AgentToolEntry[]): string[] {
+  return tools.map(entrySelector);
+}
+
 export class AgentManagerFixtureState {
   private readonly installations = new Map<string, InstallationState>();
   private readonly operations = new Map<string, StoredOperation>();
@@ -596,6 +730,9 @@ export class AgentManagerFixtureState {
         key: keyNameOf('OpenAI'),
         helmRelease: 'kagent',
       });
+      if (takesToolApproval(installation)) {
+        seedException(installation, agents);
+      }
       state = {
         organizations,
         agents,
@@ -604,6 +741,9 @@ export class AgentManagerFixtureState {
         erasing: new Map(),
         creating: new Map(),
       };
+      if (installation === INCOMPLETE_MODEL_INSTALLATION) {
+        OLDER_CHART_INSTALLATIONS.add(state);
+      }
       this.installations.set(installation, state);
     }
     this.finishErasures(state);
@@ -1820,6 +1960,14 @@ export class AgentManagerFixtureState {
     };
   }
 
+  /** The agents of an installation, by namespace and name. */
+  agentRefs(installation: string): { namespace: string; name: string }[] {
+    return [...this.stateOf(installation).agents.values()].map(agent => ({
+      namespace: agent.namespace,
+      name: agent.name,
+    }));
+  }
+
   private agentsIn(
     installation: string,
     namespace?: string,
@@ -1841,8 +1989,33 @@ export class AgentManagerFixtureState {
     return agent;
   }
 
-  private agentAnswerOf(agent: FixtureAgentRecord): AgentManagerAgent {
-    return { ...agentManagerAgentOf(agent), values: valuesOf(agent) };
+  private agentAnswerOf(
+    installation: string,
+    agent: FixtureAgentRecord,
+    grants: readonly AgentApprovalGrant[] = [],
+    pending = false,
+  ): AgentManagerAgent {
+    const answer: AgentManagerAgent = {
+      ...agentManagerAgentOf(agent),
+      values: valuesOf(agent),
+      // The kagent template's binding of the agent's muster server.
+      tools: [{ server: agent.name }],
+    };
+    if (!takesToolApproval(installation)) {
+      return answer;
+    }
+    return {
+      ...answer,
+      toolSettings: agent.tools ?? agent.toolset ?? FIXTURE_TOOLSET,
+      ...(agent.defaultApproval && { defaultApproval: agent.defaultApproval }),
+      ...(grants.length > 0 && { grants: grants.map(grant => ({ ...grant })) }),
+      generation: agent.generation ?? 1,
+      approvalSettings: true,
+      // Bound to Sessions once the release ran its current generation.
+      ...(pending
+        ? { approvalEnforcement: 'pending' }
+        : { approvalEnforcement: 'enforced', approvalEnforced: true }),
+    };
   }
 
   getAgent(
@@ -1850,9 +2023,193 @@ export class AgentManagerFixtureState {
     namespace: string,
     name: string,
   ): AgentManagerAgent {
+    const stored = this.stored(installation, namespace, name);
     return this.agentAnswerOf(
-      this.view(this.stored(installation, namespace, name)),
+      installation,
+      this.view(stored),
+      stored.grants,
+      stored.settlesAt !== undefined && this.now() < stored.settlesAt,
     );
+  }
+
+  /**
+   * `list_approval_grants`: the grants of a namespace's agents, all or on one
+   * connector (muster's server key).
+   */
+  listApprovalGrants(
+    installation: string,
+    namespace: string | undefined,
+    server: string | undefined,
+  ): {
+    grants: AgentApprovalGrant[];
+    unreadable: string[];
+    unreadableCount: number;
+  } {
+    // As agent-manager's review (`list helmreleases` in the namespace): the
+    // guest reads where it manages agents. Without a namespace, every one it
+    // may read; of the others, an organization's are only counted, never
+    // named, the rest named as unreadable.
+    const readable = this.managedNamespaces(installation);
+    if (namespace !== undefined && !readable.includes(namespace)) {
+      throw refusal(
+        'forbidden',
+        `you may not list helmreleases in namespace ${namespace}`,
+      );
+    }
+    const scope = namespace ? [namespace] : readable;
+    const agents = [...this.stateOf(installation).agents.values()];
+    const others = namespace
+      ? []
+      : [
+          ...new Set(
+            agents
+              .map(agent => agent.namespace)
+              .filter(ns => !readable.includes(ns)),
+          ),
+        ].sort();
+    const organizationNamespaces = new Set(
+      this.stateOf(installation).organizations.map(
+        organization => organization.namespace,
+      ),
+    );
+    const unreadable = others.filter(ns => !organizationNamespaces.has(ns));
+    const unreadableCount = others.length - unreadable.length;
+    return {
+      grants: agents
+        .filter(agent => scope.includes(agent.namespace))
+        .flatMap(agent =>
+          (agent.grants ?? [])
+            .filter(grant => !server || grant.server === server)
+            .map(grant => ({
+              ...grant,
+              agent: { namespace: agent.namespace, name: agent.name },
+              agentDisplayName: agent.displayName,
+            })),
+        ),
+      unreadable,
+      unreadableCount,
+    };
+  }
+
+  /**
+   * `set_agent_approval`: settings on entries of the list and its default;
+   * an `Allow` over a connector's `Ask` only by its connector admin, which
+   * records a grant. The save drops the other grants the guest is no admin
+   * of, as every save does.
+   */
+  setAgentApproval(
+    installation: string,
+    args: AgentApprovalChange & {
+      namespace: string;
+      name: string;
+      mode?: string;
+    } & Record<string, unknown>,
+  ) {
+    // A grant lives on the release only: a release in git carries none.
+    if (commitsAgent(args.mode, installation)) {
+      throw refusal(
+        'unsupported',
+        'set_agent_approval writes live only here: a release in git carries no grant',
+      );
+    }
+    refuseOtherToolsArgs('set_agent_approval', args);
+    // As agent-manager: it refuses any argument it does not declare.
+    for (const key of Object.keys(args)) {
+      if (!SET_APPROVAL_ARGS.has(key)) {
+        throw refusal(
+          'invalid_request',
+          `set_agent_approval does not take ${key}`,
+        );
+      }
+    }
+    this.mustCreateAgentsIn(this.writableIn(installation, args.namespace));
+    const agent = this.stored(installation, args.namespace, args.name);
+    mustBeAt(agent, args.expectedGeneration);
+    this.mustTakeSettings(
+      installation,
+      args.namespace,
+      Object.entries(args.settings ?? {})
+        .filter(([, value]) => value)
+        .map(([selector, value]) => ({ [selector]: value as never })),
+      args.default,
+    );
+    if (args.settings === undefined && args.default === undefined) {
+      throw refusal(
+        'invalid_request',
+        'set_agent_approval needs settings or default',
+      );
+    }
+    const before = agent.tools ?? agent.toolset ?? FIXTURE_TOOLSET;
+    const named = new Set<string>();
+    const tools = [...before];
+    for (const [selector, value] of Object.entries(args.settings ?? {})) {
+      const index = tools.findIndex(entry => entrySelector(entry) === selector);
+      if (index < 0) {
+        throw refusal(
+          'invalid_request',
+          `settings: ${selector} is not an entry of the agent's tools; add it with update_agent_access first`,
+        );
+      }
+      if (value !== '' && !isApprovalSetting(value)) {
+        throw refusal(
+          'invalid_request',
+          `settings: ${selector}: must be Allow, Ask, Block or ""`,
+        );
+      }
+      tools[index] = value === '' ? selector : { [selector]: value };
+      named.add(selector);
+    }
+    let fallback = agent.defaultApproval;
+    if (args.default !== undefined) {
+      if (args.default !== '' && !isApprovalSetting(args.default)) {
+        throw refusal(
+          'invalid_request',
+          'default: must be Allow, Ask, Block or ""',
+        );
+      }
+      fallback = args.default === '' ? undefined : args.default;
+      named.add('default');
+    }
+    const generation = (agent.generation ?? 1) + 1;
+    const granted = grantsOfApproval(
+      installation,
+      tools,
+      fallback,
+      named,
+      generation,
+    );
+    const { kept, dropped } = settleGrants(
+      installation,
+      (agent.grants ?? []).filter(
+        grant =>
+          !granted.some(
+            next => next.entry === grant.entry && next.server === grant.server,
+          ),
+      ),
+      tools,
+      fallback,
+      generation,
+    );
+    agent.tools = tools;
+    agent.toolset = selectorsOf(tools);
+    agent.defaultApproval = fallback;
+    agent.grants = [...kept, ...granted];
+    agent.generation = generation;
+    agent.writtenAt = this.now();
+    this.changed();
+    return {
+      agent: { namespace: agent.namespace, name: agent.name },
+      tools,
+      default: fallback ?? null,
+      before: { tools: before, default: null },
+      toolSettings: tools,
+      defaultApproval: fallback,
+      grants: agent.grants,
+      dropped,
+      sessionsUpdated: true,
+      warnings: [],
+      dryRun: false,
+    };
   }
 
   getAgentStatus(
@@ -1976,7 +2333,9 @@ export class AgentManagerFixtureState {
       iconUrl: spec.iconUrl,
       skills: spec.skills ?? [],
       plugins: spec.plugins ?? [],
-      toolset: spec.toolset ?? [],
+      toolset: spec.tools ? selectorsOf(spec.tools) : (spec.toolset ?? []),
+      ...(spec.tools && { tools: spec.tools }),
+      ...(spec.default && { defaultApproval: spec.default }),
       egress: spec.egress ?? [],
       egressPolicyRefs: spec.egressPolicyRefs ?? [],
       connectors: spec.connectors ?? [],
@@ -2001,8 +2360,72 @@ export class AgentManagerFixtureState {
     };
   }
 
+  /** `create_agent`'s and `validate_agent`'s checks of the tool list. */
+  /**
+   * agent-manager's refusal of settings for a namespace whose agent chart
+   * source serves a chart without them.
+   */
+  private mustTakeSettings(
+    installation: string,
+    namespace: string,
+    tools: readonly AgentToolEntry[] | undefined,
+    fallback: unknown,
+  ): void {
+    const hasSettings =
+      (tools ?? []).some(entry => typeof entry !== 'string') ||
+      (fallback !== undefined && fallback !== '');
+    if (
+      hasSettings &&
+      servesOlderChart(this.stateOf(installation), namespace)
+    ) {
+      throw refusal(
+        'unsupported',
+        `the agent chart ${OLDER_CHART} has no tool approval settings (tools, default); use a chart that has them`,
+      );
+    }
+  }
+
+  private checkCreateList(installation: string, spec: AgentSpec): void {
+    if (!takesToolApproval(installation)) {
+      if (spec.tools !== undefined || spec.default !== undefined) {
+        throw refusal(
+          'invalid_request',
+          'create_agent does not take tools or default',
+        );
+      }
+      return;
+    }
+    if (spec.tools !== undefined && spec.toolset !== undefined) {
+      throw refusal(
+        'invalid_request',
+        'pass tools or toolset (deprecated), not both',
+      );
+    }
+    if (spec.tools !== undefined) {
+      toolListOf(spec.tools);
+    }
+    this.mustTakeSettings(
+      installation,
+      spec.namespace,
+      spec.tools,
+      spec.default,
+    );
+    if (spec.default !== undefined && !isApprovalSetting(spec.default)) {
+      throw refusal('invalid_request', 'default: must be Allow, Ask or Block');
+    }
+    refuseAllowOverAsk(
+      installation,
+      'create_agent',
+      [],
+      spec.tools ?? [],
+      spec.default,
+      true,
+    );
+  }
+
   validateAgent(installation: string, spec: AgentSpec): ValidateAgentResult {
     this.organizationIn(installation, spec.namespace);
+    this.checkCreateList(installation, spec);
     return this.validation(
       installation,
       this.recordOf(installation, spec),
@@ -2016,6 +2439,7 @@ export class AgentManagerFixtureState {
   ): CreateAgentResult | CommitAgentResult {
     const commits = commitsAgent(spec.mode, installation);
     this.mustCreateAgentsIn(this.writableIn(installation, spec.namespace));
+    this.checkCreateList(installation, spec);
     const record = this.recordOf(installation, spec);
     if (
       this.stateOf(installation).agents.has(keyOf(spec.namespace, spec.name))
@@ -2065,7 +2489,10 @@ export class AgentManagerFixtureState {
       iconUrl: updated(agent.iconUrl, update.iconUrl),
       skills: update.skills ?? agent.skills,
       plugins: update.plugins ?? agent.plugins,
-      toolset: update.toolset ?? agent.toolset,
+      toolset: update.tools
+        ? selectorsOf(update.tools)
+        : (update.toolset ?? agent.toolset),
+      tools: update.tools ?? (update.toolset ? undefined : agent.tools),
       egress: update.egress ?? agent.egress,
       egressPolicyRefs: update.egressPolicyRefs ?? agent.egressPolicyRefs,
       connectors: update.connectors ?? agent.connectors,
@@ -2080,23 +2507,69 @@ export class AgentManagerFixtureState {
     };
   }
 
+  /** `update_agent_access`'s check: it never grants. */
+  private checkAccessList(
+    installation: string,
+    agent: StoredAgent,
+    update: AgentUpdate,
+  ): void {
+    if (!takesToolApproval(installation) || update.tools === undefined) {
+      return;
+    }
+    if (update.toolset !== undefined) {
+      throw refusal(
+        'invalid_request',
+        'pass tools or toolset (deprecated), not both',
+      );
+    }
+    this.mustTakeSettings(
+      installation,
+      agent.namespace,
+      update.tools,
+      undefined,
+    );
+    refuseAllowOverAsk(
+      installation,
+      'update_agent_access',
+      agent.tools ?? agent.toolset ?? [],
+      toolListOf(update.tools),
+      agent.defaultApproval,
+      false,
+    );
+  }
+
   validateUpdate(
     installation: string,
     update: AgentUpdate & { mode?: string },
   ): ValidateAgentResult {
     commitsAgent(update.mode, installation);
     const agent = this.stored(installation, update.namespace, update.name);
+    this.checkAccessList(installation, agent, update);
     return this.validation(installation, this.merged(agent, update), 'update');
   }
 
+  /**
+   * `update_agent`, and `update_agent_access` (`tool`) on an agent-manager
+   * with tool approval: each refuses the other's fields in its words, and
+   * every save drops the grants the guest is no connector admin of.
+   */
   updateAgent(
     installation: string,
     update: AgentUpdate & { mode?: string; dryRun?: boolean },
+    tool: 'update_agent' | 'update_agent_access' = 'update_agent',
   ): UpdateAgentResult | (UpdateAgentResult & CommitAgentResult) {
     const commits = commitsAgent(update.mode, installation);
+    if (takesToolApproval(installation)) {
+      refuseOtherToolsArgs(tool, update as Record<string, unknown>);
+    }
     this.mustCreateAgentsIn(this.writableIn(installation, update.namespace));
     const agent = this.stored(installation, update.namespace, update.name);
-    const next = this.merged(agent, update);
+    if (takesToolApproval(installation)) {
+      mustBeAt(agent, update.expectedGeneration);
+    }
+    this.checkAccessList(installation, agent, update);
+    const { expectedGeneration: _expected, ...fields } = update;
+    const next = this.merged(agent, fields);
     const validation = this.validation(installation, next, 'update');
     if (!validation.valid) {
       throw refusal('invalid_request', validation.errors!.join('; '));
@@ -2139,6 +2612,23 @@ export class AgentManagerFixtureState {
       );
       this.changed();
     }
+    // Any save settles the grants, a save that changed nothing too.
+    let dropped: UpdateAgentResult['dropped'];
+    const saved = this.stateOf(installation).agents.get(
+      keyOf(agent.namespace, agent.name),
+    );
+    if (saved && (saved.grants ?? []).length > 0) {
+      const settled = settleGrants(
+        installation,
+        saved.grants ?? [],
+        saved.tools ?? saved.toolset ?? [],
+        saved.defaultApproval,
+        saved.generation ?? 1,
+      );
+      saved.grants = settled.kept;
+      dropped = settled.dropped;
+      this.changed();
+    }
     return {
       agent: this.getAgent(installation, agent.namespace, agent.name),
       before,
@@ -2146,6 +2636,9 @@ export class AgentManagerFixtureState {
       changed,
       manifests: validation.manifests,
       requestedBy: FIXTURE_USER.email,
+      ...(dropped && dropped.length > 0 && { dropped }),
+      sessionsUpdated: true,
+      warnings: [],
     };
   }
 
@@ -2167,6 +2660,13 @@ export class AgentManagerFixtureState {
     return {
       name,
       namespace,
+      ...(agent.grants?.length && {
+        dropped: agent.grants.map(grant => ({
+          entry: grant.entry,
+          server: grant.server,
+          reason: 'agent deleted',
+        })),
+      }),
       helmReleaseDeleted: true,
       agentDeleted: agent.release === 'ready',
       remoteMcpServerDeleted: agent.release === 'ready',

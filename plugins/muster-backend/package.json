@@ -30,8 +30,10 @@
   "dependencies": {
     "@ai-sdk/mcp": "^2.0.14",
     "@backstage/backend-plugin-api": "backstage:^",
+    "@backstage/catalog-model": "backstage:^",
     "@backstage/config": "backstage:^",
     "@backstage/errors": "backstage:^",
+    "@backstage/plugin-catalog-node": "backstage:^",
     "@giantswarm/backstage-plugin-gs-node": "workspace:^",
     "express": "^5.0.0",
     "express-promise-router": "^4.1.0"

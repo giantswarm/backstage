@@ -38,11 +38,11 @@ export type PendingConfirmation = {
   /**
    * What is being asked. `'input'` is a question put through `ask_user`;
    * `'approval'` is "may I run this tool", which takes a yes/no rather than an
-   * answer. ADK wraps both in the same confirmation request. `'sign-in'` is an
-   * MCP server's sign-in link (a URL elicitation):
-   * the person opens it, then the agent continues.
+   * answer. ADK wraps both in the same confirmation request. `'url'` is an MCP
+   * server's URL elicitation, whatever it asks for (muster's sign-in, its
+   * approval page): the person opens the page, then the agent continues.
    */
-  asks: 'input' | 'approval' | 'sign-in';
+  asks: 'input' | 'approval' | 'url';
   /**
    * The tool the agent proposed to run, for an `'approval'`. Proxied calls are
    * looked through: a call made through muster's `call_tool` names the inner
@@ -55,8 +55,8 @@ export type PendingConfirmation = {
   args?: unknown;
   /** The questions, for an `'input'`. Empty otherwise. */
   questions: AskUserQuestion[];
-  /** The sign-in, for a `'sign-in'`. */
-  signIn?: UrlElicitationRequest;
+  /** The URL elicitation, for a `'url'`. */
+  elicitation?: UrlElicitationRequest;
   /**
    * The `messageId` of the task status message that asks, when it has one.
    * Tells this request apart from a later one in the same task: answering
@@ -181,9 +181,9 @@ export function readPendingConfirmation(
         ? { askedIn: statusMessageId }
         : {};
 
-    const signIn = readUrlElicitationRequest(statusMessage);
-    if (signIn) {
-      return { taskId, asks: 'sign-in', questions: [], signIn, ...askedIn };
+    const elicitation = readUrlElicitationRequest(statusMessage);
+    if (elicitation) {
+      return { taskId, asks: 'url', questions: [], elicitation, ...askedIn };
     }
 
     for (const rawPart of parts) {

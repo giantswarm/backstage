@@ -32,6 +32,17 @@ describe('EffectBadge', () => {
     const [small, compact] = screen
       .getAllByText('Changes things')
       .map(badge => badge.classList);
-    expect(compact).toHaveLength(small.length + 1);
+    expect([...small].some(c => /compact/.test(c))).toBe(false);
+    expect([...compact].some(c => /compact/.test(c))).toBe(true);
+  });
+
+  it('explains the effect as a property of the tool, in text', () => {
+    render(<EffectBadge effect="changes" />);
+    expect(
+      screen.getByText(/can change things, or its server does not say/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByTitle(/This tool can change things/),
+    ).toBeInTheDocument();
   });
 });

@@ -35,6 +35,15 @@ import { AgentDetailPage } from './AgentDetailPage';
 
 // The organizations agent-manager names for the person
 // (`list_organizations`).
+// The agent's approval report reads muster (tool approval): none here.
+jest.mock('../../hooks/useAgentApprovalReport', () => ({
+  useAgentApprovalReport: () => ({
+    status: 'idle',
+    tools: [],
+    truncated: false,
+  }),
+}));
+
 jest.mock('../OrganizationDirectoryProvider', () => ({
   ...jest.requireActual('../OrganizationDirectoryProvider'),
   useOrganizationDirectory: () =>

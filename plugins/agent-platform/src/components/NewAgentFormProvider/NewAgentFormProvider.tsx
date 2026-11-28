@@ -19,8 +19,10 @@ import {
   type AgentPluginEntry,
   type AgentSkillEntry,
   type WriteMode,
+  type AgentApprovalSetting,
 } from '../../lib/agentManager';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
+import type { AgentApprovalDraft } from '../../lib/agentApproval';
 import { useToolsetSelectorLimit } from '../../hooks/useToolsetSelectorLimit';
 import {
   changedFields,
@@ -229,6 +231,12 @@ export type NewAgentFormState = {
    * or *Nothing outside the chat* clears it.
    */
   signInToolDeclined?: boolean;
+  /**
+   * The approval settings on the tool list's entries, by selector, and the
+   * list's default (tool approval). A setting on a selector no longer
+   * selected is kept but not saved, so picking it again brings it back.
+   */
+  approval?: AgentApprovalDraft;
 };
 
 /** agent-manager's refusal of the selected connectors. */
@@ -349,6 +357,13 @@ export type NewAgentFormContextValue = TagsFieldUpdaters & {
   setToolsChatOnly: () => void;
   /** Sets or clears {@link NewAgentFormState.toolsetBase}. */
   setToolsetBase: (base: string | undefined) => void;
+  /** Sets an entry's approval setting, or removes it (`undefined`). */
+  setApprovalSetting: (
+    selector: string,
+    setting: AgentApprovalSetting | undefined,
+  ) => void;
+  /** Sets the tool list's default approval setting, or removes it. */
+  setApprovalDefault: (setting: AgentApprovalSetting | undefined) => void;
   /** Sets {@link NewAgentFormState.signInToolDeclined}. */
   setSignInToolDeclined: (declined: boolean) => void;
   /**
@@ -1045,6 +1060,25 @@ export function NewAgentFormProvider({
         setState(prev =>
           prev.toolsetBase === toolsetBase ? prev : { ...prev, toolsetBase },
         ),
+      setApprovalSetting: (selector, setting) =>
+        setState(prev => {
+          const { [selector]: _, ...rest } = prev.approval?.settings ?? {};
+          return {
+            ...prev,
+            approval: {
+              ...prev.approval,
+              settings: setting ? { ...rest, [selector]: setting } : rest,
+            },
+          };
+        }),
+      setApprovalDefault: setting =>
+        setState(prev => {
+          const { default: _, ...rest } = prev.approval ?? { settings: {} };
+          return {
+            ...prev,
+            approval: setting ? { ...rest, default: setting } : rest,
+          };
+        }),
       setSignInToolDeclined: declined =>
         setState(prev =>
           Boolean(prev.signInToolDeclined) === declined

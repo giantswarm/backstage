@@ -41,7 +41,7 @@ import {
   type McpServerTransport,
   type NewMcpServerFormState,
 } from '../../lib/mcpServerDefinition';
-import { useToolTakesArgument } from '../shared/hooks';
+import { useEditArgumentSupport, useToolTakesArgument } from '../shared/hooks';
 
 export type NewMcpServerFormContextValue = TagsFieldUpdaters & {
   state: NewMcpServerFormState;
@@ -407,11 +407,22 @@ export function NewMcpServerFormProvider({
     registeredName ? registeredInstallation : state.installation,
     'tags',
   );
-  const takesRequestMeta = useToolTakesArgument(
-    registeredName ? 'core_mcpserver_update' : 'core_mcpserver_create',
-    registeredName ? registeredInstallation : state.installation,
+  // An edit sends it through `core_mcpserver_connect` (the one update of an
+  // older muster).
+  const createTakesRequestMeta = useToolTakesArgument(
+    'core_mcpserver_create',
+    state.installation,
     'requestMeta',
+    { enabled: !registeredName },
   );
+  const editTakesRequestMeta = useEditArgumentSupport(
+    registeredInstallation,
+    'requestMeta',
+    { enabled: Boolean(registeredName) },
+  );
+  const takesRequestMeta = registeredName
+    ? editTakesRequestMeta === true
+    : createTakesRequestMeta;
 
   const value = useMemo<NewMcpServerFormContextValue>(() => {
     const detailsProblems = mcpServerDetailsProblems(state, {

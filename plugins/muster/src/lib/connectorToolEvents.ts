@@ -9,8 +9,15 @@ export const MCP_SERVER_UPDATED: PortalEvent = {
   attributes: {},
 };
 
+/** A connector's tool approval settings were saved. */
+export const TOOL_APPROVAL_SAVED: PortalEvent = {
+  name: 'Muster.toolApprovalSaved',
+  attributes: {},
+};
+
 const CONNECTOR_TOOL_EVENTS: Record<string, PortalEvent> = {
   core_mcpserver_update: MCP_SERVER_UPDATED,
+  core_mcpserver_set_approval: TOOL_APPROVAL_SAVED,
   core_mcpserver_delete: { name: 'Muster.mcpServerDeleted', attributes: {} },
   core_service_start: {
     name: 'Muster.mcpServerConnectionChanged',

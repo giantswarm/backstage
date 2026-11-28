@@ -44,8 +44,8 @@ export type ExternalUrlConsentDialogProps = {
 };
 
 /**
- * Asks before opening an address a server provided: the full address as
- * text with its domain highlighted, warnings for a punycode domain, plain
+ * Asks before opening an address a server provided: its full host, the full
+ * address as text with its registrable domain highlighted, warnings for a punycode domain, plain
  * http and user info, and an explicit Open. The address is never a link.
  * Escape, a click outside and the close button answer `cancel`; "Don't open"
  * answers `decline`.
@@ -83,10 +83,21 @@ export function ExternalUrlConsentDialog({
                   “{request.message}”
                 </Text>
               ) : null}
+              {/* The full host, as the browser's address bar will show it:
+                  the registrable domain alone hides the name that tells
+                  services apart on a shared or wildcard-DNS domain
+                  (muster.127.0.0.1.nip.io is not nip.io). The address below
+                  keeps the registrable domain highlighted, against
+                  look-alikes such as login.github.com.evil.example. */}
               <Text variant="body-medium">
-                Domain:{' '}
-                <Text as="span" variant="body-medium" weight="bold">
-                  {described.domain}
+                Host:{' '}
+                <Text
+                  as="span"
+                  variant="body-medium"
+                  weight="bold"
+                  data-testid="external-url-host"
+                >
+                  {described.hostname}
                 </Text>
               </Text>
               <div className={classes.address} data-testid="external-url">

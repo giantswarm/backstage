@@ -137,6 +137,15 @@ jest.mock('../../hooks/useMusterServers', () => ({
   }),
 }));
 
+// The origin of the session's muster, which a URL elicitation's link returns
+// from (`UrlElicitationPanel`).
+jest.mock('../../hooks/useMusterPages', () => ({
+  useMusterPages: () => ({
+    origin: 'https://muster.example.example.com',
+    basePath: '',
+  }),
+}));
+
 jest.mock('../../hooks/useKagentCapabilities', () => ({
   useKagentCapabilities: () => ({ isUserScoped: true }),
 }));
@@ -2513,6 +2522,57 @@ describe('SessionDetailPage', () => {
         decision: 'approve',
         answers: [["I've signed in"]],
         text: "I've signed in",
+      });
+    });
+  });
+
+  describe('a URL elicitation the agent waits on', () => {
+    it("shows muster's message with Open and Done where it cannot decide the approval inline", async () => {
+      mockUseSessionDetail.mockReturnValue({
+        ...loadedView,
+        isAgentWorking: false,
+        state: awaitingInput,
+        pendingConfirmation: {
+          taskId: 'task-1',
+          asks: 'url',
+          questions: [],
+          elicitation: {
+            id: 'call-7',
+            server: 'muster',
+            message:
+              'Alert Review wants to acknowledge an incident in PagerDuty.',
+            url: 'https://muster.example.example.com/approvals/0f3c9a',
+            elicitationId: 'el-9b1d',
+          },
+          askedIn: 'status-1',
+        },
+      });
+      const user = userEvent.setup();
+      const open = jest.fn().mockResolvedValue('accept');
+      await render([[externalUrlConsentApiRef, { open }]]);
+
+      const card = screen.getByTestId('url-elicitation-card');
+      expect(card).toHaveTextContent(
+        'Alert Review wants to acknowledge an incident in PagerDuty.',
+      );
+      expect(card).toHaveTextContent('muster.example.example.com');
+      await user.click(
+        within(card).getByRole('button', {
+          name: 'Open (opens in a new tab)',
+        }),
+      );
+      // Without muster's decision API (no muster plugin here) the approval
+      // page opens as sent: no return, the person says Done.
+      expect(open.mock.lastCall[0].url).toBe(
+        'https://muster.example.example.com/approvals/0f3c9a',
+      );
+
+      await user.click(within(card).getByRole('button', { name: 'Done' }));
+      expect(mockAnswer).toHaveBeenCalledWith({
+        taskId: 'task-1',
+        decision: 'approve',
+        text: 'Done.',
+        askedIn: 'status-1',
       });
     });
   });

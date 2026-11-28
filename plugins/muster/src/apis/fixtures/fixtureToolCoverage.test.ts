@@ -14,7 +14,12 @@ import { fixtureToolNames } from './fixtureToolNames';
  * muster's own tools the pages call that fixture mode does not answer, each
  * with the reason. None today: list one here rather than leave it unchecked.
  */
-const NOT_SERVED = new Set<string>();
+const NOT_SERVED = new Set<string>([
+  // The connector Tools tab's *Allowed for* reads agent-manager's grants:
+  // agent-manager is the agent-platform plugin's fixture server, whose drift
+  // guard covers these.
+  'x_agent-manager_list_approval_grants',
+]);
 
 /**
  * The calls whose tool name is only known at runtime. Fixture mode lists the
@@ -26,6 +31,15 @@ const UNRESOLVED = new Set([
   'components/ToolPage/ToolPage.tsx: tool',
   // A workflow's Run tab runs the workflow's `workflow_<name>` tool.
   'components/WorkflowPage/WorkflowPage.tsx: workflow.getName()',
+  // A connector's edit runs core_mcpserver_connect and core_mcpserver_update
+  // (lib/connectorWrites.ts), both answered.
+  'components/shared/hooks/connectorEdit.ts: write.tool',
+  // The JSON edit saves through that edit (`useConnectorEditWrite`).
+  `components/shared/hooks/connectorEdit.ts: useCallback(
+    (args: Record<string, unknown>) =>
+      writeConnectorEdit(queryClient, musterApi, args, installation),
+    [queryClient, musterApi, installation],
+  )`,
 ]);
 
 describe('fixture mode’s tool handlers', () => {

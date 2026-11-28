@@ -9,12 +9,14 @@ import {
   musterApiRef,
   MusterUnauthorizedError,
   type MusterApi,
+  type ToolSummary,
 } from '@giantswarm/backstage-plugin-muster';
 import { PageHeaderActionsProvider } from '@giantswarm/backstage-plugin-ui-react';
 import { mockPhoneLayout } from '@giantswarm/backstage-plugin-ui-react/testUtils';
 
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import type {
+  AgentApprovalSetting,
   AgentManagerInfo,
   AgentSpec,
   ValidateAgentResult,
@@ -197,6 +199,17 @@ type Scenario = {
   tenant?: string;
   /** The organization's own connectors picked on the Tools step. */
   connectors?: string[];
+  /**
+   * agent-manager takes approval settings (`create_agent` declares `tools`),
+   * and muster reports these tools for the agent's list.
+   */
+  approvalReport?: ToolSummary[];
+  /** The approval settings set on the Tools step, by selector. */
+  approval?: Record<string, AgentApprovalSetting>;
+  /** What set_agent_approval does after the create: succeed, or throw this. */
+  approvalError?: Error;
+  /** Whether create_agent's schema can be read (`false`: it fails). */
+  schemaReadable?: boolean;
 };
 
 function makeMusterApi(scenario: Scenario = {}) {
@@ -216,6 +229,11 @@ function makeMusterApi(scenario: Scenario = {}) {
           }
           return scenario.notes ? { ...result, notes: scenario.notes } : result;
         }
+        case 'x_agent-manager_set_agent_approval':
+          if (scenario.approvalError) {
+            throw scenario.approvalError;
+          }
+          return { grants: [], dropped: [] };
         case 'x_agent-manager_create_agent': {
           if (scenario.createError) {
             throw scenario.createError;
@@ -236,14 +254,26 @@ function makeMusterApi(scenario: Scenario = {}) {
       }
     },
   );
-  const filterTools = jest.fn(async () => ({
+  const filterTools = jest.fn(async (options: { agentTools?: unknown }) => ({
     total: 0,
     filtered_count: 0,
     truncated: false,
-    tools: [],
+    tools: options.agentTools ? (scenario.approvalReport ?? []) : [],
+    ...(options.agentTools
+      ? { agentTools: { entries: [], settings: [] } }
+      : {}),
     toolset: ['preset:read-only'],
     toolset_unmatched: [],
   }));
+  const describeTool = jest.fn(async (name: string) => {
+    if (scenario.schemaReadable === false) {
+      throw new Error('muster answered 503');
+    }
+    if (scenario.approvalReport && name === 'x_agent-manager_create_agent') {
+      return { name, inputSchema: { properties: { tools: {}, default: {} } } };
+    }
+    throw new Error(`Tool not found: ${name}`);
+  });
   const listTools = jest.fn(async () => ({
     tools: [],
     servers_requiring_auth: [],
@@ -257,6 +287,7 @@ function makeMusterApi(scenario: Scenario = {}) {
     api: {
       callTool,
       filterTools,
+      describeTool,
       listTools,
       getAuthStatus,
       signInServer,
@@ -274,7 +305,9 @@ function Seed({
   toolset = ['preset:read-only'],
   tenant = 'kagent',
   connectors = [],
+  approval = {},
 }: {
+  approval?: Record<string, AgentApprovalSetting>;
   children: ReactNode;
   withSkill?: boolean;
   harness?: HarnessChoice;
@@ -296,6 +329,7 @@ function Seed({
     toggleSkill,
     setToolset,
     setConnectors,
+    setApprovalSetting,
     isComplete,
   } = useNewAgentForm();
   useEffect(() => {
@@ -306,7 +340,7 @@ function Seed({
     if (egressText) {
       setEgressText(egressText);
     }
-    setInstallation('gazelle');
+    setInstallation('example');
     setTenantChoices([tenant]);
     selectModelConfig('opus-4-7', tenant);
     selectHarness(harness);
@@ -315,6 +349,9 @@ function Seed({
     }
     setToolset(toolset);
     setConnectors(connectors);
+    for (const [selector, setting] of Object.entries(approval)) {
+      setApprovalSetting(selector, setting);
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   return isComplete ? <>{children}</> : null;
@@ -351,6 +388,7 @@ async function renderReview(
               toolset={scenario.toolset}
               tenant={scenario.tenant}
               connectors={scenario.connectors}
+              approval={scenario.approval}
             >
               <NewAgentReviewPage />
               <ConnectorsRefusalProbe />
@@ -420,7 +458,7 @@ function grafanaCloud() {
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
     } as never,
-    'gazelle',
+    'example',
   );
 }
 
@@ -467,7 +505,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_validate_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -494,7 +532,7 @@ describe('NewAgentReviewPage', () => {
     const item = within(technical).getByText('Underlying model').parentElement;
     expect(item).toHaveTextContent('claude-sonnet-4-6 · Anthropic');
     expect(mockUseUnderlyingModel).toHaveBeenCalledWith(
-      'gazelle',
+      'example',
       'opus-4-7',
       'kagent',
     );
@@ -508,7 +546,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_validate_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -520,6 +558,155 @@ describe('NewAgentReviewPage', () => {
         'https://github.com:443, https://*.githubusercontent.com',
       ),
     ).toBeInTheDocument();
+  });
+
+  it('creates an agent with its Ask and Block settings in create_agent alone', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      toolset: ['server:github'],
+      approval: {
+        'server:github': 'Block',
+        'tool:x_github_merge': 'Allow',
+      },
+      approvalReport: [
+        {
+          name: 'x_github_merge',
+          server: 'github',
+          kind: 'tool',
+          connectorAdmin: true,
+          approval: {
+            setting: 'ask',
+            source: 'tool',
+            entry: 'tool:x_github_merge',
+            admin: { setting: 'ask', source: 'tool' },
+          },
+        },
+      ],
+    });
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    const sent = specSentTo(callTool, 'x_agent-manager_validate_agent');
+    // The extra tool entry waits for the resolution to say it is covered;
+    // here the resolution lists nothing, so it is not written.
+    expect(sent.toolset).toBeUndefined();
+    expect(sent.tools).toEqual([{ 'server:github': 'Block' }]);
+
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_create_agent',
+        expect.anything(),
+        'example',
+      ),
+    );
+    expect(callTool).not.toHaveBeenCalledWith(
+      'x_agent-manager_set_agent_approval',
+      expect.anything(),
+      'example',
+    );
+  });
+
+  it('offers the created agent, never a second create, when its exceptions are refused after the create', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      toolset: ['tool:x_github_merge'],
+      approval: { 'tool:x_github_merge': 'Allow' },
+      approvalError: new Error(
+        'forbidden: allowing tool:x_github_merge over the Ask of connector github needs a connector admin of it',
+      ),
+      approvalReport: [
+        {
+          name: 'x_github_merge',
+          server: 'github',
+          kind: 'tool',
+          connectorAdmin: true,
+          approval: {
+            setting: 'ask',
+            source: 'tool',
+            entry: 'tool:x_github_merge',
+            admin: { setting: 'ask', source: 'tool' },
+          },
+        },
+      ],
+    });
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+
+    expect(
+      await screen.findByText(
+        'The agent was created without some of its approval settings',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Not saved: x_github_merge Allow\./),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/agent-manager said: allowing/),
+    ).toBeInTheDocument();
+    expect(deployButton()).toBeDisabled();
+    await user.click(screen.getByRole('button', { name: 'Open the agent' }));
+    expect(mockNavigate).toHaveBeenCalled();
+    expect(
+      callTool.mock.calls.filter(
+        ([name]) => name === 'x_agent-manager_create_agent',
+      ),
+    ).toHaveLength(1);
+  });
+
+  it('creates nothing while it cannot tell whether agent-manager takes the chosen settings', async () => {
+    await renderReview({
+      toolset: ['server:github'],
+      approval: { 'server:github': 'Block' },
+      approvalReport: [],
+      schemaReadable: false,
+    });
+    expect(
+      await screen.findByText(
+        "The approval settings can't be checked right now",
+      ),
+    ).toBeInTheDocument();
+    expect(deployButton()).toBeDisabled();
+  });
+
+  it("leaves an Allow over a connector's Ask out of create_agent and grants it after", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderReview({
+      toolset: ['tool:x_github_merge'],
+      approval: { 'tool:x_github_merge': 'Allow' },
+      approvalReport: [
+        {
+          name: 'x_github_merge',
+          server: 'github',
+          kind: 'tool',
+          connectorAdmin: true,
+          approval: {
+            setting: 'ask',
+            source: 'tool',
+            entry: 'tool:x_github_merge',
+            admin: { setting: 'ask', source: 'tool' },
+          },
+        },
+      ],
+    });
+    await waitFor(() => expect(deployButton()).toBeEnabled());
+    await user.click(deployButton());
+    await waitFor(() =>
+      expect(callTool).toHaveBeenCalledWith(
+        'x_agent-manager_set_agent_approval',
+        {
+          namespace: 'kagent',
+          name: expect.any(String),
+          settings: { 'tool:x_github_merge': 'Allow' },
+        },
+        'example',
+      ),
+    );
+    expect(specSentTo(callTool, 'x_agent-manager_create_agent').tools).toEqual([
+      'tool:x_github_merge',
+    ]);
+    const order = callTool.mock.calls.map(([name]) => name);
+    expect(order.indexOf('x_agent-manager_create_agent')).toBeLessThan(
+      order.indexOf('x_agent-manager_set_agent_approval'),
+    );
   });
 
   it('creates an agent with a connector that needs a sign-in able to start it', async () => {
@@ -546,7 +733,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -569,7 +756,7 @@ describe('NewAgentReviewPage', () => {
           metadata: { name: 'wiki', namespace: 'agents-payments-x7k2q' },
           spec: { type: 'streamable-http', auth: { type: 'oauth' } },
         } as never,
-        'gazelle',
+        'example',
       ),
     ];
     const user = userEvent.setup();
@@ -584,7 +771,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     const spec = specSentTo(callTool, 'x_agent-manager_create_agent');
@@ -614,7 +801,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -664,7 +851,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_validate_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     const spec = specSentTo(callTool, 'x_agent-manager_validate_agent');
@@ -676,7 +863,7 @@ describe('NewAgentReviewPage', () => {
       tags: ['review', 'go'],
       systemMessage: 'You review pull requests.',
       modelConfig: 'opus-4-7',
-      iconUrl: 'https://avatars.gazelle.example/v1/go-service-reviewer.png',
+      iconUrl: 'https://avatars.example.example/v1/go-service-reviewer.png',
       skills: [
         {
           name: 'Incident responder',
@@ -737,7 +924,7 @@ describe('NewAgentReviewPage', () => {
             workload: { image: 'registry.example/kagent-harness@sha256:0123' },
           },
         },
-        'gazelle',
+        'example',
       ),
     ];
     await renderReview();
@@ -898,7 +1085,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.anything(),
-        'gazelle',
+        'example',
       ),
     );
     const created = specSentTo(callTool, 'x_agent-manager_create_agent');
@@ -910,11 +1097,11 @@ describe('NewAgentReviewPage', () => {
 
     await waitFor(() =>
       expect(mockNavigate).toHaveBeenCalledWith(
-        '/customize/agents/gazelle/kagent/go-service-reviewer',
+        '/customize/agents/example/kagent/go-service-reviewer',
         {
           state: {
             [AGENT_CREATED_STATE_KEY]: {
-              installation: 'gazelle',
+              installation: 'example',
               namespace: 'kagent',
               name: 'go-service-reviewer',
               requestedBy: 'admin@lab.local',
@@ -1014,7 +1201,7 @@ describe('NewAgentReviewPage', () => {
         "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
         'server_sign_in_required',
         'agent-manager',
-        'gazelle',
+        'example',
       ),
     });
     await screen.findByTestId('code-agent.yaml');
@@ -1059,7 +1246,7 @@ describe('NewAgentReviewPage', () => {
       expect(callTool).toHaveBeenCalledWith(
         'x_agent-manager_create_agent',
         expect.objectContaining({ mode: 'commit' }),
-        'gazelle',
+        'example',
       ),
     );
     expect(
@@ -1126,7 +1313,7 @@ describe('NewAgentReviewPage', () => {
         expect(callTool).toHaveBeenCalledWith(
           'x_agent-manager_create_agent',
           expect.objectContaining({ mode: 'commit' }),
-          'gazelle',
+          'example',
         ),
       );
     } finally {

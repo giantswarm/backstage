@@ -1177,3 +1177,189 @@ describe('the model whose key Secret is missing', () => {
     expect(erases?.credentials).not.toContain(`${INCOMPLETE_MODEL}-model-key`);
   });
 });
+
+describe('the fixture agent-manager with tool approval', () => {
+  /** The agent the data set seeds an exception on. */
+  function seeded(state: AgentManagerFixtureState) {
+    for (const ref of state.agentRefs(INSTALLATION)) {
+      const agent = state.getAgent(INSTALLATION, ref.namespace, ref.name);
+      if (agent.grants?.length) return agent;
+    }
+    throw new Error('no seeded exception');
+  }
+
+  it('answers the tool list beside the kagent bindings, which keep their name', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const answer = await client.getAgent(agent.namespace, agent.name);
+    expect(answer.tools).toEqual([{ server: agent.name }]);
+    expect(answer.approvalSettings).toBe(true);
+    expect(answer.toolSettings).toEqual(
+      expect.arrayContaining([expect.objectContaining({})]),
+    );
+    expect(answer.grants?.[0]).toMatchObject({ grantedBy: 'dana@example.com' });
+  });
+
+  it('splits the update tools and refuses the other tools’ fields in their words', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    await expect(client.takesSplitUpdates()).resolves.toBe(true);
+    expect(() =>
+      state.updateAgent(INSTALLATION, {
+        namespace: agent.namespace,
+        name: agent.name,
+        skills: [],
+      }),
+    ).toThrow('update_agent does not take skills: use update_agent_access');
+  });
+
+  it("refuses an Allow over a connector's Ask on create, and grants it only to its connector admin", async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const asking = (
+      agent.toolSettings as Array<string | Record<string, string>>
+    )
+      .map(entry => (typeof entry === 'string' ? entry : Object.keys(entry)[0]))
+      .find(selector => selector.startsWith('tool:'))!;
+    await expect(
+      client.createAgent({
+        ...specIn(agent.namespace, { name: 'copycat' }),
+        toolset: undefined,
+        tools: [`server:${agent.namespace}/wiki`, { [asking]: 'Allow' }],
+      }),
+    ).rejects.toThrow(/does not grant exceptions/);
+    await client.createAgent({
+      ...specIn(agent.namespace, { name: 'copycat' }),
+      toolset: undefined,
+      tools: [`server:${agent.namespace}/wiki`, asking],
+    });
+    await expect(
+      client.setAgentApproval(agent.namespace, 'copycat', {
+        settings: { [asking]: 'Allow' },
+      }),
+    ).rejects.toMatchObject({ code: 'forbidden' });
+  });
+
+  it('drops the exceptions of connectors the guest is no admin of on any save', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const result = await client.updateAgent({
+      namespace: agent.namespace,
+      name: agent.name,
+      description: 'Changed.',
+    });
+    expect(result.dropped).toEqual([
+      expect.objectContaining({ server: `${agent.namespace}/wiki` }),
+    ]);
+    expect(
+      (await client.getAgent(agent.namespace, agent.name)).grants,
+    ).toBeUndefined();
+  });
+
+  it('refuses a write composed from an older generation, as agent-manager does', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    await expect(
+      client.updateAgent({
+        namespace: agent.namespace,
+        name: agent.name,
+        description: 'Changed.',
+        expectedGeneration: (agent.generation ?? 1) - 1,
+      }),
+    ).rejects.toMatchObject({ code: 'conflict' });
+    await expect(
+      client.setAgentApproval(agent.namespace, agent.name, {
+        default: 'Ask',
+        expectedGeneration: 99,
+      }),
+    ).rejects.toThrow(/changed since it was read/);
+  });
+
+  it('lists grants with the tools they cover, every readable namespace at once, the others unreadable', async () => {
+    const { server, state } = setup();
+    const agent = seeded(state);
+    const answer = (await server.tools.list_approval_grants(
+      {},
+      { installation: INSTALLATION, signal: new AbortController().signal },
+    )) as { content: Array<{ text: string }> } | Record<string, unknown>;
+    const body =
+      'content' in answer
+        ? JSON.parse((answer.content as Array<{ text: string }>)[0].text)
+        : answer;
+    const grant = (body.grants as Array<Record<string, unknown>>).find(
+      candidate => (candidate.agent as { name: string }).name === agent.name,
+    );
+    expect(grant).toMatchObject({
+      agentDisplayName: agent.displayName,
+      tools: [expect.any(String)],
+    });
+    expect(Array.isArray(body.unreadable)).toBe(true);
+    // An organization's namespace is counted, never named.
+    const organizations = new Set(
+      state
+        .listOrganizations(INSTALLATION)
+        .organizations.map(listed => listed.organization?.namespace)
+        .filter(Boolean),
+    );
+    expect(
+      (body.unreadable as string[]).some(ns => organizations.has(ns)),
+    ).toBe(false);
+    expect(typeof body.unreadableCount).toBe('number');
+  });
+
+  it('reports the settings pending until the write settled, then enforced', async () => {
+    const { client, state, advance } = setup();
+    const agent = seeded(state);
+    expect(agent.approvalEnforcement).toBe('enforced');
+    await client.updateAgent({
+      namespace: agent.namespace,
+      name: agent.name,
+      description: 'Changed.',
+    });
+    const written = await client.getAgent(agent.namespace, agent.name);
+    expect(written.approvalEnforcement).toBe('pending');
+    expect(written.approvalEnforced).toBeUndefined();
+    advance(SETTLE_MS);
+    expect(
+      (await client.getAgent(agent.namespace, agent.name)).approvalEnforcement,
+    ).toBe('enforced');
+  });
+
+  it('refuses settings where the namespace serves an older chart, as agent-manager does', async () => {
+    const data = createFixtureDataSet({ now: NOW });
+    const state = new AgentManagerFixtureState(data, () => NOW);
+    const client = new AgentManagerClient(
+      musterApiOf(agentManagerFixtureServer(() => state)),
+      'tarragon',
+    );
+    const namespace = state
+      .listOrganizations('tarragon')
+      .organizations.map(listed => listed.organization?.namespace)
+      .find(Boolean)!;
+    await expect(
+      client.createAgent({
+        ...specIn(namespace, { name: 'older-chart' }),
+        toolset: undefined,
+        tools: [{ 'preset:read-only': 'Ask' }],
+      }),
+    ).rejects.toMatchObject({ code: 'unsupported' });
+  });
+
+  it('says which grants a delete removed', async () => {
+    const { client, state } = setup();
+    const agent = seeded(state);
+    const result = await client.deleteAgent(agent.namespace, agent.name);
+    expect(result.dropped).toEqual([
+      expect.objectContaining({ reason: 'agent deleted' }),
+    ]);
+  });
+
+  it('serves the older agent-manager without the approval tools', async () => {
+    const { server } = setup();
+    const older = new AgentManagerClient(
+      musterApiOf(server),
+      WITHOUT_MODEL_OPERATIONS,
+    );
+    await expect(older.takesSplitUpdates()).resolves.toBe(false);
+  });
+});

@@ -390,7 +390,7 @@ export function AgentUpdateSkillsDialog({
       return;
     }
     onOpenChange(false);
-    onUpdated(result.agent.skills, result.requestedBy, result.fromGeneration);
+    onUpdated(result.agent?.skills, result.requestedBy, result.fromGeneration);
   };
 
   return (

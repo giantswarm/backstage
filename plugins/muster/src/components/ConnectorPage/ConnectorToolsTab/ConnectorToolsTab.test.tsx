@@ -7,11 +7,21 @@ import {
   useNavigate,
   useParams,
 } from 'react-router-dom';
-import { renderInTestApp } from '@backstage/frontend-test-utils';
-import type { ToolSummary } from '../../../apis';
+import { renderInTestApp as renderInBackstage } from '@backstage/frontend-test-utils';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { musterApiRef, type MusterApi, type ToolSummary } from '../../../apis';
 import { mcpServersRouteRef } from '../../../routes';
 import type { NoToolsExplanation } from '../../McpServersPage/serverDetail';
 import { ConnectorToolsTab } from './ConnectorToolsTab';
+
+/** The tab as a page renders it: inside the query client its grants read with. */
+const renderInTestApp: typeof renderInBackstage = (element, options) =>
+  renderInBackstage(
+    <QueryClientProvider client={new QueryClient()}>
+      {element}
+    </QueryClientProvider>,
+    options,
+  );
 
 /** Every third tool reads; the rest change things. */
 function makeTools(count: number): ToolSummary[] {
@@ -37,7 +47,7 @@ function renderTab(
     <>
       <ConnectorToolsTab
         server="jira"
-        installation="gazelle"
+        installation="example"
         tools={{
           tools,
           truncated: false,
@@ -76,11 +86,11 @@ function renderRoundTrip(tools: ToolSummary[]) {
   return renderInTestApp(
     <Routes>
       <Route
-        path="/customize/connectors/gazelle/jira"
+        path="/customize/connectors/example/jira"
         element={
           <ConnectorToolsTab
             server="jira"
-            installation="gazelle"
+            installation="example"
             tools={{
               tools,
               truncated: false,
@@ -92,12 +102,12 @@ function renderRoundTrip(tools: ToolSummary[]) {
         }
       />
       <Route
-        path="/customize/connectors/gazelle/jira/tools/:tool"
+        path="/customize/connectors/example/jira/tools/:tool"
         element={<ToolPageProbe />}
       />
     </Routes>,
     {
-      initialRouteEntries: ['/customize/connectors/gazelle/jira'],
+      initialRouteEntries: ['/customize/connectors/example/jira'],
       mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
     },
   );
@@ -129,7 +139,7 @@ describe('ConnectorToolsTab', () => {
       within(first).getByRole('link', { name: 'tool_000' }),
     ).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/jira/tools/x_jira_tool_000',
+      '/customize/connectors/example/jira/tools/x_jira_tool_000',
     );
     expect(within(first).getByText('Tool number 0')).toBeInTheDocument();
     expect(within(first).getByText('Reads')).toBeInTheDocument();
@@ -146,7 +156,7 @@ describe('ConnectorToolsTab', () => {
     );
     expect(toolRows()[0]).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/jira/tools/x_jira_tool_299?q=tool_299',
+      '/customize/connectors/example/jira/tools/x_jira_tool_299?q=tool_299',
     );
   });
 
@@ -158,7 +168,7 @@ describe('ConnectorToolsTab', () => {
     expect(screen.getByText('20 tools shown, 180 more')).toBeInTheDocument();
     expect(toolRows()[0]).toHaveAttribute(
       'href',
-      '/customize/connectors/gazelle/jira/tools/x_jira_tool_001?effect=changes',
+      '/customize/connectors/example/jira/tools/x_jira_tool_001?effect=changes',
     );
   });
 
@@ -304,5 +314,385 @@ describe('ConnectorToolsTab', () => {
     );
     expect(toolRows()).toHaveLength(3);
     expect(screen.getByRole('searchbox')).toBeInTheDocument();
+  });
+});
+
+describe('ConnectorToolsTab: tool approval', () => {
+  /** Ten tools as muster reports them on a reviewed connector. */
+  function reviewedTools(admin = true): ToolSummary[] {
+    return makeTools(10).map((tool, i) => {
+      let approval: ToolSummary['approval'] = {
+        setting: 'allow',
+        source: 'tool',
+      };
+      if (i % 3 !== 0) {
+        approval = { setting: 'ask', source: 'tool' };
+      }
+      if (i === 9) {
+        approval = { setting: 'ask', source: 'connector', new: true };
+      }
+      return { ...tool, approval, connectorAdmin: admin };
+    });
+  }
+
+  function renderApprovalTab(
+    tools: ToolSummary[],
+    props: Partial<React.ComponentProps<typeof ConnectorToolsTab>> = {},
+  ) {
+    return renderInTestApp(
+      <ConnectorToolsTab
+        server="jira"
+        installation="example"
+        tools={{
+          tools,
+          truncated: false,
+          isLoading: false,
+          shortName: name => name.replace(/^x_jira_/, ''),
+        }}
+        emptyExplanation={{ text: 'No tools.', tone: 'neutral' }}
+        settingsHref="/customize/connectors/example/jira/edit/verify"
+        {...props}
+      />,
+      {
+        initialRouteEntries: ['/connector'],
+        mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
+      },
+    );
+  }
+
+  const row = (name: string) =>
+    screen.getByText(name).closest('li') as HTMLElement;
+
+  it('shows each tool’s setting, where it comes from and the New marker, read-only', async () => {
+    await renderApprovalTab(reviewedTools());
+
+    expect(within(row('tool_000')).getByText('Allow')).toBeInTheDocument();
+    expect(
+      within(row('tool_000')).getByText('Set for this tool'),
+    ).toBeInTheDocument();
+    expect(within(row('tool_001')).getByText('Ask')).toBeInTheDocument();
+    expect(within(row('tool_009')).getByText('New')).toBeInTheDocument();
+    expect(
+      within(row('tool_009')).getByText("Connector's rule"),
+    ).toBeInTheDocument();
+    // The tab only reads: the settings change in the connector's edit.
+    expect(screen.queryByRole('radio')).toBeNull();
+    // Changing them is in the connector page's menu, not on the tab.
+    expect(
+      screen.queryByRole('link', { name: 'Change tool settings' }),
+    ).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: 'Change tool settings' }),
+    ).toBeNull();
+  });
+
+  it('says that tools added later are hidden when the rule is Block', async () => {
+    await renderApprovalTab(reviewedTools(), { newToolsRule: 'Block' });
+
+    expect(screen.getByText('Block for new tools')).toBeInTheDocument();
+  });
+
+  it('lists the tools the connector blocks, apart and with no page to open', async () => {
+    await renderApprovalTab(reviewedTools(), {
+      blockedTools: ['x_jira_delete_project'],
+    });
+
+    const blocked = row('delete_project');
+    expect(within(blocked).getByText('Block')).toBeInTheDocument();
+    expect(
+      within(blocked).getByText(/Hidden from everyone/),
+    ).toBeInTheDocument();
+    expect(within(blocked).queryByRole('link')).toBeNull();
+    // A blocked badge never reads like Ask: its own tone and icon.
+    expect(within(blocked).getByText('Block').className).not.toBe(
+      within(row('tool_001')).getByText('Ask').className,
+    );
+  });
+
+  it('counts a blocked row under no effect, as it shows none', async () => {
+    await renderApprovalTab(reviewedTools(), {
+      blockedTools: ['x_jira_delete_project'],
+    });
+
+    await userEvent.click(
+      screen.getByRole('button', { name: /Filter by what it does/ }),
+    );
+    const counts = within(await screen.findByRole('listbox'))
+      .getAllByRole('option')
+      .map(option => option.textContent);
+    const total = counts
+      .map(text => Number(/(\d+)$/.exec(text ?? '')?.[1] ?? 0))
+      .reduce((a, b) => a + b, 0);
+    expect(total).toBe(reviewedTools().length);
+  });
+
+  it('filters by approval', async () => {
+    await renderApprovalTab(reviewedTools(), {
+      blockedTools: ['x_jira_delete_project'],
+    });
+
+    const approval = screen.getByRole('button', { name: /Filter by approval/ });
+    await userEvent.click(approval);
+    expect(
+      within(await screen.findByRole('listbox'))
+        .getAllByRole('option')
+        .map(option => option.textContent),
+    ).toEqual(['Allow 3', 'Ask 7', 'Block 1']);
+    await userEvent.click(screen.getByRole('option', { name: 'Block 1' }));
+    await userEvent.keyboard('{Escape}');
+    expect(screen.getByText('delete_project')).toBeInTheDocument();
+    expect(screen.queryByText('tool_001')).toBeNull();
+  });
+
+  it('says a connector nobody reviewed allows everything, and leads its admin to review it', async () => {
+    const unreviewed = makeTools(4).map(tool => ({
+      ...tool,
+      approval: { setting: 'allow' as const, source: 'unreviewed' as const },
+      connectorAdmin: true,
+    }));
+    await renderApprovalTab(unreviewed);
+
+    expect(screen.getByText('Allow — not reviewed')).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Review tool settings' }),
+    ).toHaveAttribute('href', '/customize/connectors/example/jira/edit/verify');
+    // Said once above the list, not on every row.
+    expect(screen.queryByText('Not reviewed')).toBeNull();
+  });
+
+  it("says a just-created connector (its create's rule alone) is not reviewed, without a New on every row", async () => {
+    // As muster reports a create's preset: every tool follows the rule, New.
+    const created = makeTools(4).map(tool => ({
+      ...tool,
+      approval: {
+        setting: 'ask' as const,
+        source: 'connector' as const,
+        new: true,
+      },
+      connectorAdmin: true,
+    }));
+    await renderApprovalTab(created);
+
+    expect(screen.getByText('Ask — not reviewed')).toBeInTheDocument();
+    expect(
+      screen.getByText(/Every tool asks first until its settings are reviewed/),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: 'Review tool settings' }),
+    ).toBeInTheDocument();
+    expect(screen.queryByText('New')).toBeNull();
+    expect(screen.queryByText("Connector's rule")).toBeNull();
+  });
+
+  it('offers no review to a person who is not a connector admin', async () => {
+    const unreviewed = makeTools(4).map(tool => ({
+      ...tool,
+      approval: { setting: 'allow' as const, source: 'unreviewed' as const },
+      connectorAdmin: false,
+    }));
+    await renderApprovalTab(unreviewed);
+
+    expect(screen.getByText('Allow — not reviewed')).toBeInTheDocument();
+    expect(
+      screen.getByText(/A connector admin can review them\./),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /tool settings/ })).toBeNull();
+  });
+
+  it('points a GitOps-managed connector to Git', async () => {
+    const unreviewed = makeTools(2).map(tool => ({
+      ...tool,
+      approval: { setting: 'allow' as const, source: 'unreviewed' as const },
+      connectorAdmin: true,
+    }));
+    await renderApprovalTab(unreviewed, {
+      settingsHref: undefined,
+      settingsInGit: true,
+    });
+
+    expect(screen.getByText(/spec\.approval/)).toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: /tool settings/ })).toBeNull();
+  });
+
+  it('says why calls are refused when muster cannot read the settings', async () => {
+    const unavailable = makeTools(2).map(tool => ({
+      ...tool,
+      approval: { setting: 'ask' as const, source: 'unavailable' as const },
+    }));
+    await renderApprovalTab(unavailable);
+
+    expect(
+      screen.getByText("The tool settings can't be read"),
+    ).toBeInTheDocument();
+    // What muster does: the tools report Ask and calls do not run.
+    expect(
+      screen.getByText(/reports every tool as Ask and does not run them/),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/refuses calls/)).toBeNull();
+  });
+
+  it("warns with muster's reason where approvals cannot be answered, beside the settings", async () => {
+    const refused = makeTools(2).map(tool => ({
+      ...tool,
+      approval: {
+        setting: 'ask' as const,
+        source: 'connector' as const,
+        unavailable: 'muster runs no browser sign-in',
+      },
+    }));
+    await renderApprovalTab(refused);
+
+    expect(
+      screen.getByText("Approvals can't be answered right now"),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/runs no browser sign-in/)).toBeInTheDocument();
+    expect(screen.queryByText("The tool settings can't be read")).toBeNull();
+    expect(screen.getAllByText('Ask').length).toBeGreaterThan(0);
+  });
+
+  it('shows no approval where muster reports none (an older muster)', async () => {
+    await renderApprovalTab(makeTools(2));
+
+    expect(screen.queryByText('Allow')).toBeNull();
+    expect(screen.queryByText(/not reviewed/)).toBeNull();
+    expect(screen.queryByRole('link', { name: /tool settings/ })).toBeNull();
+  });
+});
+
+describe('ConnectorToolsTab: Allowed for', () => {
+  function renderWith(
+    callTool: jest.Mock,
+    tools: ToolSummary[] = [
+      {
+        name: 'x_jira_close',
+        server: 'jira',
+        approval: { setting: 'ask', source: 'tool' },
+      },
+      {
+        name: 'x_jira_list',
+        server: 'jira',
+        approval: { setting: 'allow', source: 'tool' },
+      },
+    ],
+  ) {
+    return renderInTestApp(
+      <ConnectorToolsTab
+        server="jira"
+        installation="example"
+        tools={{
+          tools,
+          truncated: false,
+          isLoading: false,
+          shortName: name => name.replace(/^x_jira_/, ''),
+        }}
+        emptyExplanation={{ text: 'No tools.', tone: 'neutral' }}
+      />,
+      {
+        initialRouteEntries: ['/connector'],
+        mountedRoutes: { '/customize/connectors': mcpServersRouteRef },
+        apis: [[musterApiRef, { callTool } as unknown as MusterApi]],
+      },
+    );
+  }
+
+  it("names the agents that may skip a tool's Ask, from one list across namespaces", async () => {
+    const callTool = jest.fn(async () => ({
+      grants: [
+        {
+          agent: { namespace: 'org-a', name: 'alert-review' },
+          agentDisplayName: 'Alert Review',
+          entry: 'tool:x_jira_close',
+          server: 'jira',
+          grantedBy: 'dana@example.com',
+        },
+        {
+          agent: { namespace: 'org-a', name: 'triage' },
+          entry: 'server:jira',
+          server: 'jira',
+        },
+      ],
+      unreadable: [],
+    }));
+    await renderWith(callTool);
+    expect(
+      await screen.findByText(
+        'Allowed for: Alert Review (by dana@example.com)',
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /Allowed by a broader exception: triage, for every tool of this connector/,
+      ),
+    ).toBeInTheDocument();
+    expect(callTool).toHaveBeenCalledWith(
+      'x_agent-manager_list_approval_grants',
+      { server: 'jira' },
+      'example',
+    );
+    expect(screen.queryByText(/Could not read which agents/)).toBeNull();
+  });
+
+  it('names an agent whose broader exception covers the tool by its own name', async () => {
+    await renderWith(
+      jest.fn(async () => ({
+        grants: [
+          {
+            agent: { namespace: 'org-a', name: 'triage' },
+            entry: 'server:jira',
+            server: 'jira',
+            tools: ['close'],
+          },
+        ],
+      })),
+    );
+    expect(await screen.findByText('Allowed for: triage')).toBeInTheDocument();
+  });
+
+  it('never reads an unreadable namespace as "nobody is allowed"', async () => {
+    await renderWith(
+      jest.fn(async () => ({ grants: [], unreadable: ['org-b'] })),
+    );
+    expect(
+      await screen.findByText('Could not read which agents are allowed'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /listed only for the namespaces whose agents you may read/,
+      ),
+    ).toBeInTheDocument();
+  });
+
+  it('counts the organization namespaces it could not read, which agent-manager never names', async () => {
+    await renderWith(
+      jest.fn(async () => ({
+        grants: [],
+        unreadable: ['team-x'],
+        unreadableCount: 2,
+      })),
+    );
+    expect(
+      await screen.findByText(/\(3 namespaces could not be read\)/),
+    ).toBeInTheDocument();
+  });
+
+  it('says so when agent-manager could not be asked', async () => {
+    await renderWith(
+      jest.fn(async () => {
+        throw new Error('agent-manager unreachable');
+      }),
+    );
+    expect(
+      await screen.findByText('Could not read which agents are allowed'),
+    ).toBeInTheDocument();
+  });
+
+  it('says nothing for an agent-manager without grants', async () => {
+    await renderWith(
+      jest.fn(async () => {
+        throw new Error('Tool not found: x_agent-manager_list_approval_grants');
+      }),
+    );
+    await screen.findByText('close');
+    expect(screen.queryByText(/Could not read which agents/)).toBeNull();
   });
 });

@@ -43,8 +43,8 @@ export function useConnectorWizardCloseHref(): string {
 
 /**
  * The agent-platform shell's connector registration wizard chrome: the
- * in-content wizard frame (header with Close and the Connect / Sign-in / Test
- * step strip, sticky footer with Cancel, Back and the step's own actions)
+ * in-content wizard frame (header with Close and the Connect / Sign-in /
+ * Test & Tools step strip, sticky footer with Cancel, Back and the step's own actions)
  * around a centered column — the rail stays visible beside it. Each step page
  * provides its primary buttons through `useProvidePageHeaderActions`; the
  * frame renders them in its footer and claims the page header, so the
@@ -82,7 +82,7 @@ export function ConnectorWizardFrame({
       label: 'Sign-in',
       href: wizardLinks('auth', edited),
     },
-    { id: 'test', label: 'Test' },
+    { id: 'test', label: 'Test & Tools' },
   ];
 
   return (

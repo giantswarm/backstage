@@ -14,6 +14,7 @@ import {
   MusterFixtureState,
   NEW_CONNECTOR_TOOLS,
 } from './musterFixtureState';
+import { FIXTURE_APPROVAL_UNAVAILABLE } from './musterFixtureData';
 import { musterFixtureApi } from './MusterFixtureApi';
 
 const INSTALLATION = 'meadow';
@@ -49,9 +50,214 @@ describe('the connector writes in fixture mode', () => {
     setFixtureScenarioForTests(undefined);
   });
 
+  describe('tool approval', () => {
+    const toolsOf = async (name: string) =>
+      (
+        await api.filterTools({
+          installation: INSTALLATION,
+          pattern: `x_${name}_*`,
+          limit: 200,
+        })
+      ).tools ?? [];
+
+    it('starts one connector reviewed: its settings, a hidden blocked tool and a New one', async () => {
+      const name = named('Connected');
+      const approval = objectOf(name)?.getApproval();
+      expect(approval?.rule).toBe('Ask');
+      expect(Object.values(approval?.tools ?? {})).toContain('Block');
+
+      const tools = await toolsOf(name);
+      expect(tools.every(tool => tool.connectorAdmin === true)).toBe(true);
+      expect(tools.some(tool => tool.name.includes('_delete_'))).toBe(false);
+      expect(tools.filter(tool => tool.approval?.new)).toHaveLength(1);
+      expect(
+        (await api.listServers(INSTALLATION)).mcpServers?.find(
+          server => server.name === name,
+        )?.approval,
+      ).toEqual(approval);
+    });
+
+    it("reports why asking calls are refused on the second installation's muster only", async () => {
+      const asking = (installation: string) =>
+        api
+          .filterTools({ installation, pattern: 'x_*', limit: 200 })
+          .then(result =>
+            (result.tools ?? []).filter(
+              tool => tool.approval?.setting === 'ask',
+            ),
+          );
+
+      const meadow = await asking(INSTALLATION);
+      expect(meadow.length).toBeGreaterThan(0);
+      expect(meadow.some(tool => tool.approval?.unavailable)).toBe(false);
+
+      const fennel = await asking('fennel');
+      expect(fennel.length).toBeGreaterThan(0);
+      expect(
+        fennel.every(
+          tool => tool.approval?.unavailable === FIXTURE_APPROVAL_UNAVAILABLE,
+        ),
+      ).toBe(true);
+      expect(
+        fennel.every(tool => tool.approval?.source !== 'unavailable'),
+      ).toBe(true);
+    });
+
+    it('models a person who may not edit on the second installation: no connectorAdmin, writes refused', async () => {
+      const own = (
+        await api.filterTools({
+          installation: 'fennel',
+          pattern: 'x_*',
+          limit: 200,
+        })
+      ).tools?.filter(tool => tool.connectorAdmin !== undefined);
+      expect(own?.length).toBeGreaterThan(0);
+      expect(own?.every(tool => tool.connectorAdmin === false)).toBe(true);
+
+      const server = (await api.listServers('fennel')).mcpServers?.find(
+        entry => entry.state === 'Connected',
+      );
+      for (const [tool, args] of [
+        ['core_mcpserver_update', { description: 'x' }],
+        ['core_mcpserver_set_approval', { approval: { rule: 'Ask' } }],
+        ['core_mcpserver_delete', {}],
+      ] as const) {
+        await expect(
+          api.callTool(tool, { name: server!.name, ...args }, 'fennel'),
+        ).rejects.toThrow(/is forbidden: User .* cannot update resource/);
+      }
+    });
+
+    it('sets the settings explicitly, and the next listing reports them', async () => {
+      const name = named('Connected');
+      const keys = Object.keys(objectOf(name)!.getApproval()!.tools!);
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: {
+            rule: 'Allow',
+            tools: Object.fromEntries(keys.map(key => [key, 'Allow'])),
+          },
+        }),
+      ).resolves.toBe(`Approval of MCP server '${name}' updated successfully`);
+
+      const tools = await toolsOf(name);
+      // The blocked tool is listed again; the last one still follows the rule.
+      expect(tools.some(tool => tool.name.includes('_delete_'))).toBe(true);
+      expect(
+        tools.filter(tool => tool.approval?.source === 'tool'),
+      ).toHaveLength(keys.length);
+      expect(tools.every(tool => tool.approval?.setting === 'allow')).toBe(
+        true,
+      );
+    });
+
+    it('refuses a setting muster does not know, and a call without settings', async () => {
+      const name = named('Connected');
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: { tools: { list_records: 'Maybe' } },
+        }),
+      ).rejects.toThrow(/must be Allow, Ask or Block/);
+      await expect(
+        call('core_mcpserver_set_approval', { name }),
+      ).rejects.toThrow(/presets: recommended, allow-all, ask-all/);
+    });
+
+    it("stores a create's preset as its rule alone, as muster does before any tool is listed", async () => {
+      await call('core_mcpserver_create', {
+        preset: 'recommended',
+        name: 'cellar',
+        type: 'streamable-http',
+        url: 'https://cellar.example.com/mcp',
+        autoStart: true,
+      });
+
+      expect(objectOf('cellar')?.getApproval()).toEqual({ rule: 'Ask' });
+      jest.advanceTimersByTime(CONNECT_MS);
+      const tools = await toolsOf('cellar');
+      expect(tools.length).toBeGreaterThan(0);
+      // Each tool follows the rule, New: nothing is written out per tool.
+      expect(
+        tools.every(
+          t =>
+            t.approval?.source === 'connector' &&
+            t.approval.new === true &&
+            t.approval.setting === 'ask',
+        ),
+      ).toBe(true);
+    });
+
+    it('hides the tools without their own entry when the rule is Block', async () => {
+      const name = 'cellar-block';
+      await call('core_mcpserver_create', {
+        name,
+        type: 'streamable-http',
+        url: 'https://cellar.example.com/mcp',
+        autoStart: true,
+        preset: 'allow-all',
+      });
+      jest.advanceTimersByTime(CONNECT_MS);
+      const [kept, ...rest] = await toolsOf(name);
+      expect(rest.length).toBeGreaterThan(0);
+
+      await call('core_mcpserver_set_approval', {
+        name,
+        approval: {
+          rule: 'Block',
+          tools: { [kept.name.replace(`x_${name}_`, '')]: 'Allow' },
+        },
+      });
+
+      expect((await toolsOf(name)).map(t => t.name)).toEqual([kept.name]);
+    });
+
+    it('refuses a settings write whose expectedGeneration is stale, as muster does', async () => {
+      const name = named('Connected');
+      const generation = (await api.listServers(INSTALLATION)).mcpServers?.find(
+        server => server.name === name,
+      )?.generation;
+      expect(typeof generation).toBe('number');
+
+      await call('core_mcpserver_update', { name, description: 'Changed.' });
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: { rule: 'Ask' },
+          expectedGeneration: generation,
+        }),
+      ).rejects.toThrow(/^conflict: MCP server '.*' changed since it was read/);
+      await expect(
+        call('core_mcpserver_set_approval', {
+          name,
+          approval: { rule: 'Ask' },
+          expectedGeneration: generation! + 1,
+        }),
+      ).resolves.toBeDefined();
+    });
+
+    it('refuses a create without approval settings, as muster does', async () => {
+      await expect(
+        call('core_mcpserver_create', {
+          name: 'bare',
+          type: 'streamable-http',
+          url: 'https://bare.example.com/mcp',
+        }),
+      ).rejects.toEqual(
+        expect.objectContaining({
+          message:
+            "core_mcpserver_create needs the server's approval settings: pass preset (recommended, allow-all, ask-all) or approval {rule, tools}",
+          status: 422,
+        }),
+      );
+    });
+  });
+
   it('registers a connector, which connects and then serves its tools', async () => {
     await expect(
       call('core_mcpserver_create', {
+        preset: 'allow-all',
         name: 'orchard',
         displayName: 'Orchard',
         tags: ['team-a'],
@@ -88,6 +294,7 @@ describe('the connector writes in fixture mode', () => {
   it('refuses a name taken, as muster does', async () => {
     await expect(
       call('core_mcpserver_create', {
+        preset: 'allow-all',
         name: named('Connected'),
         type: 'streamable-http',
         url: 'https://taken.example.com/mcp',
@@ -101,8 +308,43 @@ describe('the connector writes in fixture mode', () => {
     );
   });
 
+  it("refuses each split write the other's arguments before writing, as muster does", async () => {
+    const name = named('Connected');
+    const before = objectOf(name)?.getUrl();
+
+    await expect(
+      call('core_mcpserver_update', {
+        name,
+        url: 'https://elsewhere.example.com/mcp',
+        description: 'Moved.',
+      }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        message:
+          'core_mcpserver_update does not take url: use core_mcpserver_connect or core_mcpserver_set_approval',
+        status: 422,
+      }),
+    );
+    await expect(
+      call('core_mcpserver_connect', { name, description: 'Moved.' }),
+    ).rejects.toEqual(
+      expect.objectContaining({
+        message:
+          'core_mcpserver_connect does not take description: use core_mcpserver_update or core_mcpserver_set_approval',
+      }),
+    );
+    expect(objectOf(name)?.getUrl()).toBe(before);
+
+    await call('core_mcpserver_connect', {
+      name,
+      url: 'https://elsewhere.example.com/mcp',
+    });
+    expect(objectOf(name)?.getUrl()).toBe('https://elsewhere.example.com/mcp');
+  });
+
   it('has a connector at a host no muster reaches fail once it tried', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'nowhere',
       type: 'streamable-http',
       url: 'https://nowhere.invalid/mcp',
@@ -117,6 +359,7 @@ describe('the connector writes in fixture mode', () => {
 
   it('has an OAuth connector wait for the person’s sign-in, and connect after it', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'grove',
       type: 'streamable-http',
       url: 'https://grove.example.com/mcp',
@@ -150,10 +393,15 @@ describe('the connector writes in fixture mode', () => {
     const before = objectOf(name)!;
 
     await expect(
-      call('core_mcpserver_update', {
+      call('core_mcpserver_connect', {
         name,
         type: 'streamable-http',
         url: 'https://moved.example.com/mcp',
+      }),
+    ).resolves.toBe(`MCP server '${name}' updated successfully`);
+    await expect(
+      call('core_mcpserver_update', {
+        name,
         description: '',
         displayName: 'Moved',
       }),
@@ -163,7 +411,7 @@ describe('the connector writes in fixture mode', () => {
     expect(after.getUrl()).toBe('https://moved.example.com/mcp');
     expect(after.getDescription()).toBe(before.getDescription());
     expect(after.getDisplayName()).toBe('Moved');
-    expect(after.jsonData.metadata.generation).toBe(2);
+    expect(after.jsonData.metadata.generation).toBe(3);
     expect(after.isReconcilePending()).toBe(true);
     expect(await stateOf(name)).toBe('Connecting');
     // The new URL answers: it no longer fails.
@@ -298,6 +546,7 @@ describe('the connector writes in fixture mode', () => {
 
   it('leaves a connector never started stopped when it is edited', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'idle',
       type: 'streamable-http',
       url: 'https://idle.example.com/mcp',
@@ -433,6 +682,7 @@ describe('the connector writes in fixture mode', () => {
     ).toEqual(expect.objectContaining({ reachable: true }));
 
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'nowhere',
       type: 'streamable-http',
       url,
@@ -446,7 +696,7 @@ describe('the connector writes in fixture mode', () => {
     const name = named('Running');
     const url = objectOf(name)!.getUrl();
 
-    await call('core_mcpserver_update', {
+    await call('core_mcpserver_connect', {
       name,
       type: 'streamable-http',
       url,
@@ -459,6 +709,7 @@ describe('the connector writes in fixture mode', () => {
 
   it('names a connector’s tools after the tool prefix its definition sets', async () => {
     await call('core_mcpserver_create', {
+      preset: 'allow-all',
       name: 'orchard',
       type: 'streamable-http',
       url: 'https://orchard.example.com/mcp',
@@ -498,7 +749,7 @@ describe('the connector writes in fixture mode', () => {
     expect(state.restart(INSTALLATION, { name })).toBe(
       `Restart of service '${name}' requested; the reconciler will restart it`,
     );
-    state.update(INSTALLATION, { name, auth: { type: 'oauth' } });
+    state.connectWrite(INSTALLATION, { name, auth: { type: 'oauth' } });
     state.signIn(INSTALLATION, name);
     expect(state.restart(INSTALLATION, { name })).toBe(
       `Restart of service '${name}' requested; the reconciler will restart it. This server uses OAuth: if it comes up auth-required, authenticate with core_auth_login`,

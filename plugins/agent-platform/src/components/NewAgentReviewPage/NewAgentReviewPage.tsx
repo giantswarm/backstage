@@ -15,7 +15,12 @@ import {
 import { useAgentIconUrl } from '../../hooks/useAgentIconUrl';
 import { AGENT_CREATED_STATE_KEY } from '../../hooks/useAgentCreatedHandoff';
 import { useAgentManagerInfo } from '../../hooks/useAgentManager';
-import { supportsTags } from '../../lib/agentManager';
+import {
+  noApprovalChartRefusal,
+  supportsTags,
+  type AgentApprovalChange,
+} from '../../lib/agentManager';
+import { ApprovalChartRefusal } from '../AgentApprovalSettings';
 import {
   useCreateAgent,
   type CreateAgentFailure,
@@ -32,6 +37,8 @@ import {
   type CommitAgentResult,
 } from '../../lib/agentManager';
 import { agentSpecOf } from '../../lib/agentSpec';
+import { createApprovalSplit, reportSummary } from '../../lib/agentApproval';
+import { useWizardApproval } from '../../hooks/useWizardApproval';
 import { ORGANIZATION_CONNECTORS_LABEL } from '../../lib/organizationConnectors';
 import { PrivateSkillsNote } from '../PrivateSkillsNote';
 import {
@@ -91,6 +98,18 @@ export function NewAgentReviewPage() {
   return edit ? <EditAgentReview edit={edit} /> : <CreateAgentReview />;
 }
 
+/** The settings a create's follow-up carried, in words. */
+function followUpLine(followUp: AgentApprovalChange | undefined): string {
+  const parts = Object.entries(followUp?.settings ?? {}).map(
+    ([selector, setting]) =>
+      `${selector.replace(/^[a-z]+:/, '')} ${setting || 'without a setting'}`,
+  );
+  if (followUp?.default) {
+    parts.push(`default ${followUp.default}`);
+  }
+  return parts.join(', ') || 'its approval settings';
+}
+
 function CreateAgentReview() {
   const classes = useReviewStyles();
   const navigate = useNavigate();
@@ -147,15 +166,63 @@ function CreateAgentReview() {
     state.installation,
   );
   const tagsSupported = supportsTags(info);
-  const spec = useMemo(
-    () =>
-      agentSpecOf(state, {
-        toolset: declared,
-        iconUrl: buildIconUrl(state.installation, state.slug),
-        tags: tagsSupported,
-      }),
-    [state, declared, buildIconUrl, tagsSupported],
+  // The approval settings, where agent-manager takes them: `create_agent`
+  // takes all but an Allow over a connector's Ask and an allowing default,
+  // which `set_agent_approval` sets right after (`followUp`).
+  const approval = useWizardApproval(
+    state.installation,
+    toolset,
+    state.approval,
+    resolution,
   );
+  const approvalSplit = useMemo(
+    () =>
+      approval.supported
+        ? createApprovalSplit(
+            approval.tools,
+            approval.default,
+            approval.report.status === 'ready'
+              ? approval.report.tools
+              : undefined,
+          )
+        : undefined,
+    [approval.supported, approval.tools, approval.default, approval.report],
+  );
+  const approvalPending =
+    approval.support === 'reading' ||
+    approval.coveragePending ||
+    approval.report.status === 'loading';
+  const spec = useMemo(() => {
+    const composed = agentSpecOf(state, {
+      toolset: declared,
+      iconUrl: buildIconUrl(state.installation, state.slug),
+      tags: tagsSupported,
+    });
+    if (!approvalSplit) {
+      return composed;
+    }
+    const { toolset: _declared, ...rest } = composed;
+    return {
+      ...rest,
+      tools: approvalSplit.tools,
+      ...(approvalSplit.default && { default: approvalSplit.default }),
+    };
+  }, [state, declared, buildIconUrl, tagsSupported, approvalSplit]);
+  const followUp = approvalSplit?.followUp;
+  // The agent was created and its follow-up refused: what was not saved, and
+  // agent-manager's words. The page then offers the agent, never a second
+  // create of the same name.
+  const [approvalFailure, setApprovalFailure] = useState<{
+    message: string;
+    notSaved: string;
+    href?: string;
+  }>();
+  // Settings chosen on the Tools step while agent-manager's support cannot
+  // be told: a create now would leave them out unseen, so there is none.
+  const draftHasSettings =
+    Object.keys(state.approval?.settings ?? {}).length > 0 ||
+    Boolean(state.approval?.default);
+  const approvalUnknown = draftHasSettings && approval.support === 'unread';
   const namespace = spec.namespace;
 
   // The platform Harness the runtime field shows, for its summary row.
@@ -166,7 +233,11 @@ function CreateAgentReview() {
   // whether it takes tags: the spec would differ from what Create sends.
   const validation = useValidateAgent(
     state.installation,
-    isComplete && isToolsetValid && !signIn.isLoading && !isInfoLoading
+    isComplete &&
+      isToolsetValid &&
+      !signIn.isLoading &&
+      !isInfoLoading &&
+      !approvalPending
       ? spec
       : undefined,
   );
@@ -180,6 +251,9 @@ function CreateAgentReview() {
   const notes = dryRun?.notes ?? [];
   const canWrite =
     !signIn.isLoading &&
+    !approvalPending &&
+    !approvalUnknown &&
+    !approvalFailure &&
     Boolean(dryRun) &&
     violations.length === 0 &&
     !validation.failure;
@@ -195,10 +269,11 @@ function CreateAgentReview() {
 
   const onDeploy = useCallback(async () => {
     setCommitResult(undefined);
+    setApprovalFailure(undefined);
     creation.reset();
     let result;
     try {
-      result = await creation.deploy(spec);
+      result = await creation.deploy(spec, followUp);
     } catch {
       // Left to `creation.failure`, rendered inline below.
       return;
@@ -208,6 +283,17 @@ function CreateAgentReview() {
       namespace,
       name: spec.name,
     });
+    if (result.approvalFailure) {
+      // The agent exists without the settings that were refused: said here,
+      // with the way to it, rather than lost in a navigation.
+      setApprovalFailure({
+        message: result.approvalFailure,
+        notSaved: followUpLine(followUp),
+        href: target,
+      });
+      clearSavedDraft();
+      return;
+    }
     if (target) {
       // The detail page shows the template converging on the platform Harness
       // (get_agent_status until ready) for the agent it was handed.
@@ -232,6 +318,7 @@ function CreateAgentReview() {
   }, [
     creation,
     spec,
+    followUp,
     agentDetailLink,
     state.installation,
     namespace,
@@ -283,7 +370,9 @@ function CreateAgentReview() {
         {proposeInFooter && (
           <Button
             variant="tertiary"
-            isDisabled={isBusy || !canWrite}
+            // A pull request carries no exceptions (set_agent_approval
+            // grants them on a live agent only).
+            isDisabled={isBusy || !canWrite || Boolean(followUp)}
             onPress={onCommit}
           >
             {proposeLabel}
@@ -301,6 +390,7 @@ function CreateAgentReview() {
     [
       isBusy,
       canWrite,
+      followUp,
       proposeInFooter,
       onCommit,
       onDeploy,
@@ -389,6 +479,11 @@ function CreateAgentReview() {
               <SignInToolChange change="added" signIn={signIn} />
             )}
           </PlainRow>
+          {approval.supported && approval.report.status === 'ready' && (
+            <PlainRow label="Approval">
+              {reportSummary(approval.report)}
+            </PlainRow>
+          )}
           {/* Beside the muster servers above, which "Tools" sums up. */}
           {state.connectors.length > 0 && (
             <PlainRow label={ORGANIZATION_CONNECTORS_LABEL}>
@@ -423,13 +518,15 @@ function CreateAgentReview() {
             signInRequired={validation.failure.signInRequired}
           />
         )}
-        {validation.failure?.kind === 'refused' && (
-          <Alert
-            status="danger"
-            title="agent-manager refused the dry run"
-            description={validation.failure.message}
-          />
-        )}
+        <ApprovalChartRefusal failure={validation.failure} />
+        {validation.failure?.kind === 'refused' &&
+          !noApprovalChartRefusal(validation.failure) && (
+            <Alert
+              status="danger"
+              title="agent-manager refused the dry run"
+              description={validation.failure.message}
+            />
+          )}
         {validation.failure?.kind === 'error' && (
           <Alert
             status="danger"
@@ -457,13 +554,15 @@ function CreateAgentReview() {
             onSignedIn={creation.reset}
           />
         )}
-        {creation.failure?.kind === 'refused' && (
-          <Alert
-            status="danger"
-            title={refusalTitle(creation.failure.code)}
-            description={creation.failure.message}
-          />
-        )}
+        <ApprovalChartRefusal failure={creation.failure} />
+        {creation.failure?.kind === 'refused' &&
+          !noApprovalChartRefusal(creation.failure) && (
+            <Alert
+              status="danger"
+              title={refusalTitle(creation.failure.code)}
+              description={creation.failure.message}
+            />
+          )}
         {creation.failure?.kind === 'error' && (
           <Alert
             status="danger"
@@ -472,6 +571,39 @@ function CreateAgentReview() {
           />
         )}
         {commitResult && <CommitOutcome result={commitResult} />}
+        {approvalFailure && (
+          <Flex direction="column" align="start" gap="1">
+            <Alert
+              status="warning"
+              title="The agent was created without some of its approval settings"
+              description={`Not saved: ${approvalFailure.notSaved}. Until they are, the connectors' settings apply to those tools. Open the agent and edit its tools to set them again.`}
+            />
+            <Text variant="body-small" color="secondary">
+              agent-manager said: {approvalFailure.message}
+            </Text>
+            {approvalFailure.href && (
+              <Button
+                variant="secondary"
+                onPress={() => navigate(approvalFailure.href!)}
+              >
+                Open the agent
+              </Button>
+            )}
+          </Flex>
+        )}
+        {approvalUnknown && (
+          <Alert
+            status="warning"
+            title="The approval settings can't be checked right now"
+            description="agent-manager's tools could not be read, so a create now would leave out the settings you chose. Nothing is created until they can be read; try again in a moment."
+          />
+        )}
+        {canCommit && followUp && (
+          <Text variant="body-small" color="secondary">
+            A pull request carries no exceptions, so this agent can only be
+            created live while it skips a connector's Ask.
+          </Text>
+        )}
 
         {canCommit && isPhone && (
           <Flex direction="column" align="start" gap="1">
@@ -480,7 +612,7 @@ function CreateAgentReview() {
             </Text>
             <Button
               variant="secondary"
-              isDisabled={isBusy || !canWrite}
+              isDisabled={isBusy || !canWrite || Boolean(followUp)}
               onPress={onCommit}
             >
               {proposeLabel}

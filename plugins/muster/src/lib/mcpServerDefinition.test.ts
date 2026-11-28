@@ -95,7 +95,7 @@ describe('composeMcpServerDefinition', () => {
       url: 'https://weather.example.com/mcp',
       autoStart: true,
       description: 'Forecasts and observations',
-      auth: { type: 'oauth' },
+      auth: { type: 'oauth', grantScope: 'subject' },
     });
   });
 
@@ -128,15 +128,20 @@ describe('composeMcpServerDefinition', () => {
     });
   });
 
-  it('defaults own-account connectors to subject, written only with an issuer', () => {
+  it('defaults own-account connectors to subject, on spec.auth without an issuer and on the pin with one', () => {
     expect(emptyFormState.grantScope).toBe('subject');
     const discovered = state({ authMode: 'own-account' });
-    // muster takes grantScope only on a pinned authorization server.
-    expect(effectiveGrantScope(discovered)).toBe('session');
+    // muster applies spec.auth.grantScope to the issuer it discovers
+    // (giantswarm/muster#1755): one sign-in serves every agent conversation.
+    expect(effectiveGrantScope(discovered)).toBe('subject');
     expect(composeMcpServerDefinition(discovered).auth).toEqual({
       type: 'oauth',
+      grantScope: 'subject',
     });
     expect(validateNewMcpServerForm(discovered)).toEqual([]);
+    expect(
+      composeMcpServerDefinition({ ...discovered, grantScope: 'session' }).auth,
+    ).toEqual({ type: 'oauth' });
 
     const pinned = state({
       authMode: 'own-account',
@@ -1565,15 +1570,26 @@ describe('editing a registered server in the wizard', () => {
       authorizationServer: { issuer: 'https://idp' },
     });
 
-    // Without a pin there is nothing to keep: the connector serves one session
-    // either way, and an issuer the edit adds gets the wizard's default.
-    const discovered = formStateFromServer(
-      registered({ auth: { type: 'oauth' } }),
-    );
-    expect(effectiveGrantScope(discovered)).toBe('session');
-    expect(effectiveGrantScope({ ...discovered, issuer: 'https://idp' })).toBe(
-      'subject',
-    );
+    // Without a pin the server's spec.auth.grantScope is kept the same way.
+    const discovered = (auth: Record<string, unknown>) =>
+      formStateFromServer(registered({ auth: { type: 'oauth', ...auth } }));
+    expect(effectiveGrantScope(discovered({}))).toBe('session');
+    expect(composeMcpServerDefinition(discovered({})).auth).toEqual({
+      type: 'oauth',
+    });
+    const subject = discovered({ grantScope: 'subject' });
+    expect(effectiveGrantScope(subject)).toBe('subject');
+    expect(composeMcpServerDefinition(subject).auth).toEqual({
+      type: 'oauth',
+      grantScope: 'subject',
+    });
+    // An issuer the edit adds carries the scope onto its pin.
+    expect(
+      composeMcpServerDefinition({ ...subject, issuer: 'https://idp' }).auth,
+    ).toEqual({
+      type: 'oauth',
+      authorizationServer: { issuer: 'https://idp', grantScope: 'subject' },
+    });
   });
 
   it('names the form by the server’s display name, keeping its technical name', () => {
@@ -2017,7 +2033,10 @@ describe('client credentials typed into the wizard', () => {
       clientSecretName: 'weather-mcp-muster-client-x7k2p9m4qa',
     });
     expect(validateNewMcpServerForm(form)).toEqual([]);
-    expect(composeMcpServerDefinition(form).auth).toEqual({ type: 'oauth' });
+    expect(composeMcpServerDefinition(form).auth).toEqual({
+      type: 'oauth',
+      grantScope: form.grantScope,
+    });
   });
 
   it('sends no half client: an ID without its secret is none', () => {

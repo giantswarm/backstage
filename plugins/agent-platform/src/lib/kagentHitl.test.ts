@@ -81,9 +81,9 @@ describe('readPendingConfirmation', () => {
     expect(readPendingConfirmation([signIn as unknown as A2aTaskWire])).toEqual(
       {
         taskId: 'task-1',
-        asks: 'sign-in',
+        asks: 'url',
         questions: [],
-        signIn: {
+        elicitation: {
           id: 'sign-in-1',
           server: 'muster',
           message: 'Sign in to github to continue.',
@@ -92,6 +92,45 @@ describe('readPendingConfirmation', () => {
         askedIn: 'status-1',
       },
     );
+  });
+
+  it("reads muster's approval request the same way, with its elicitationId", () => {
+    // The wire shape muster answers an asking call
+    // with, as kagent relays it: a URL elicitation to muster's approval page.
+    const approval = {
+      ...task('task-2', 'input-required', [
+        { kind: 'text', text: 'muster asks you to open a page.' },
+      ]),
+    } as unknown as { status: { message: Record<string, unknown> } };
+    approval.status.message.messageId = 'status-2';
+    approval.status.message.extensions = [
+      'https://kagent.dev/extensions/hitl/v1',
+    ];
+    approval.status.message.metadata = {
+      'https://kagent.dev/extensions/hitl/v1': {
+        type: 'url_elicitation_request',
+        id: 'call-7',
+        server: 'muster',
+        message: 'Alert Review wants to acknowledge an incident in PagerDuty.',
+        url: 'https://muster.example/approvals/0f3c9a',
+        elicitation_id: 'el-9b1d',
+      },
+    };
+    expect(
+      readPendingConfirmation([approval as unknown as A2aTaskWire]),
+    ).toEqual({
+      taskId: 'task-2',
+      asks: 'url',
+      questions: [],
+      elicitation: {
+        id: 'call-7',
+        server: 'muster',
+        message: 'Alert Review wants to acknowledge an incident in PagerDuty.',
+        url: 'https://muster.example/approvals/0f3c9a',
+        elicitationId: 'el-9b1d',
+      },
+      askedIn: 'status-2',
+    });
   });
 
   it('reads the question, its choices and the task to resume', () => {

@@ -32,3 +32,32 @@ export function mutationErrorMessage(error: unknown): string {
   }
   return (error as Error)?.message ?? 'The request failed.';
 }
+
+/**
+ * Whether muster refused a write because the person may not make it: the
+ * apiserver's RBAC refusal, which muster passes on (`… is forbidden: User "x"
+ * cannot update resource "mcpservers" …`), and nothing looser. A refusal for
+ * another reason that happens to say "forbidden" or carry a 403 (a governance
+ * or approval prerequisite, an admission webhook's denial) is not it and keeps
+ * its own message, as does a 401, which is a missing session.
+ */
+export function isForbiddenError(error: unknown): boolean {
+  const message = (error as { message?: string } | null | undefined)?.message;
+  return /\bis forbidden: User "[^"]*" cannot (?:update|patch|create|delete) resource\b/.test(
+    message ?? '',
+  );
+}
+
+/** Said when the person may not edit a connector, in the page and a save. */
+export const NO_EDIT_RIGHTS_MESSAGE =
+  "You don't have rights to edit this connector, so nothing was saved. Ask a connector admin: someone who may update MCP servers in Muster's namespace.";
+
+/**
+ * A connector save's error for the UI: plainly that the person lacks edit
+ * rights when muster refused for that reason, else as `mutationErrorMessage`.
+ */
+export function connectorSaveErrorMessage(error: unknown): string {
+  return isForbiddenError(error)
+    ? NO_EDIT_RIGHTS_MESSAGE
+    : mutationErrorMessage(error);
+}

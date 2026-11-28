@@ -789,6 +789,110 @@ describe('ConnectorPage', () => {
     ).toBeInTheDocument();
   });
 
+  describe('tool settings and edit rights', () => {
+    const approved = (connectorAdmin?: boolean) => {
+      const api = makeApi();
+      api.filterTools.mockResolvedValue({
+        total: 2,
+        filtered_count: 2,
+        truncated: false,
+        tools: [
+          {
+            name: 'x_jira_search_issues',
+            summary: 'Find tickets with a query',
+            annotations: { readOnlyHint: true },
+            approval: { setting: 'allow', source: 'tool' },
+            ...(connectorAdmin !== undefined && { connectorAdmin }),
+          },
+          {
+            name: 'x_jira_add_comment',
+            approval: { setting: 'ask', source: 'tool' },
+            ...(connectorAdmin !== undefined && { connectorAdmin }),
+          },
+        ] as never,
+      });
+      return api;
+    };
+
+    it('moves Change tool settings into the menu next to Edit, leading to the wizard step', async () => {
+      await renderAt(`${BASE}/jira`, { api: approved(true) });
+      await screen.findByText('search_issues');
+
+      // Not on the tab any more.
+      expect(
+        screen.queryByRole('link', { name: 'Change tool settings' }),
+      ).not.toBeInTheDocument();
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions' }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'Change tool settings' }),
+      ).toHaveAttribute('href', `${BASE}/jira/edit/verify`);
+    });
+
+    it('disables Edit and Change tool settings, saying the person has no rights, when muster reports connectorAdmin false', async () => {
+      await renderAt(`${BASE}/jira`, { api: approved(false) });
+      await screen.findByText('search_issues');
+
+      const edit = screen.getByRole('button', { name: 'Edit' });
+      expect(edit).toBeDisabled();
+      expect(edit).toHaveAccessibleDescription(/don't have rights to edit/);
+      await userEvent.hover(edit.parentElement!);
+      expect(await screen.findByRole('tooltip')).toHaveTextContent(
+        /Ask a connector admin/,
+      );
+
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions' }),
+      );
+      const item = screen.getByRole('menuitem', {
+        name: 'Change tool settings',
+      });
+      expect(item).toHaveAttribute('aria-disabled', 'true');
+      expect(item).not.toHaveAttribute('href');
+      expect(item).toHaveAccessibleDescription(/don't have rights to edit/);
+
+      expect(within(item).getByText(/Ask a connector admin/)).toBeVisible();
+    });
+
+    it('leaves Edit enabled where muster does not say, and a refused save explains', async () => {
+      await renderAt(`${BASE}/jira`, { api: approved(undefined) });
+      await screen.findByText('search_issues');
+
+      expect(screen.getByRole('button', { name: 'Edit' })).toBeEnabled();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions' }),
+      );
+      // Enabled, leading to the step, where Edit is: a refused save says why.
+      const item = screen.getByRole('menuitem', {
+        name: 'Change tool settings',
+      });
+      expect(item).not.toHaveAttribute('aria-disabled', 'true');
+      expect(item).toHaveAttribute('href', `${BASE}/jira/edit/verify`);
+    });
+
+    it('offers Change tool settings, enabled, for a connector that lists no tool (a Block rule hides them all)', async () => {
+      const api = makeApi();
+      api.filterTools.mockResolvedValue({
+        total: 0,
+        filtered_count: 0,
+        truncated: false,
+        tools: [],
+      });
+      await renderAt(`${BASE}/jira`, { api });
+
+      expect(await screen.findByRole('button', { name: 'Edit' })).toBeEnabled();
+      await userEvent.click(
+        screen.getByRole('button', { name: 'More actions' }),
+      );
+      expect(
+        screen.getByRole('menuitem', { name: 'Change tool settings' }),
+      ).toHaveAttribute('href', `${BASE}/jira/edit/verify`);
+    });
+  });
+
   it('leaves the Settings tab out of the tab strip', async () => {
     await renderAt(`${BASE}/jira`);
 

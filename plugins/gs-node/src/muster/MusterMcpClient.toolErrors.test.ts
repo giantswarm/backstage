@@ -225,6 +225,27 @@ describe('MusterMcpClient tool errors', () => {
     ).not.toHaveProperty('status');
   });
 
+  it.each(['core_mcpserver_update', 'core_mcpserver_connect'])(
+    "answers %s's refusal of another split write's arguments 422",
+    async tool => {
+      const refusal = `${tool} does not take url: use core_mcpserver_connect or core_mcpserver_set_approval`;
+
+      expect((await toolError(refusal, tool)).error).toMatchObject({
+        kind: 'connector_refused',
+        status: 422,
+      });
+    },
+  );
+
+  it("answers set_approval's stale expectedGeneration 422", async () => {
+    const refusal =
+      "conflict: MCP server 'jira' changed since it was read (generation 4 now, expectedGeneration 3): read it again with core_mcpserver_get and apply the change to what it holds now";
+
+    expect(
+      (await toolError(refusal, 'core_mcpserver_set_approval')).error,
+    ).toMatchObject({ kind: 'connector_refused', status: 422 });
+  });
+
   it("keeps muster's sign-in a 401", async () => {
     const { client } = buildClient({
       content: [

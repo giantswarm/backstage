@@ -48,6 +48,8 @@ import {
   ListExecutionsOptions,
   ListToolsResponse,
   McpServerListResponse,
+  ApprovalDecisionResult,
+  ApprovalLookup,
   ConnectorNamesResponse,
   MusterServerInfoResponse,
   MusterAnswerCutError,
@@ -393,6 +395,7 @@ export class MusterApiClient implements MusterApi {
       offset,
       toolset,
       includePresets,
+      agentTools,
     } = options;
     const searchParams = new URLSearchParams();
     if (pattern) {
@@ -414,10 +417,13 @@ export class MusterApiClient implements MusterApi {
       searchParams.set('include_presets', String(includePresets));
     }
     const qs = searchParams.toString();
-    if (toolset !== undefined) {
+    if (toolset !== undefined || agentTools !== undefined) {
       return this.post<FilterToolsResponse>(
         `/tools/filter${qs ? `?${qs}` : ''}`,
-        { toolset },
+        {
+          ...(toolset !== undefined && { toolset }),
+          ...(agentTools !== undefined && { agentTools }),
+        },
         installation,
       );
     }
@@ -702,6 +708,43 @@ export class MusterApiClient implements MusterApi {
     return this.post<ServerSignOutResult>(
       '/auth/logout',
       typeof server === 'string' ? { server } : server,
+      installation,
+    );
+  }
+
+  async requestHandoff(
+    url: string,
+    installation?: string,
+  ): Promise<string | undefined> {
+    try {
+      const { ticket } = await this.post<{ ticket?: unknown }>(
+        '/handoff',
+        { url },
+        installation,
+      );
+      return typeof ticket === 'string' && ticket !== '' ? ticket : undefined;
+    } catch {
+      // No ticket: muster signs the browser in itself.
+      return undefined;
+    }
+  }
+
+  async getApproval(
+    url: string,
+    installation?: string,
+  ): Promise<ApprovalLookup> {
+    return this.post<ApprovalLookup>('/approvals/view', { url }, installation);
+  }
+
+  async decideApproval(
+    url: string,
+    decision: 'approve' | 'decline',
+    digest: string,
+    installation?: string,
+  ): Promise<ApprovalDecisionResult> {
+    return this.post<ApprovalDecisionResult>(
+      '/approvals/decision',
+      { url, decision, digest },
       installation,
     );
   }

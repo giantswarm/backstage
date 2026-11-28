@@ -140,6 +140,7 @@ export function resolveMusterInstallations(
       headers: readHeaders(entry.getOptionalConfig('headers')) ?? base?.headers,
       prometheusServer:
         entry.getOptionalString('prometheusServer') ?? base?.prometheusServer,
+      publicUrl: entry.getOptionalString('publicUrl') ?? base?.publicUrl,
       source: 'configured',
     });
     if (base) {

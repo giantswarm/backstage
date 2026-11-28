@@ -2,6 +2,7 @@ import {
   coreServices,
   createBackendPlugin,
 } from '@backstage/backend-plugin-api';
+import { catalogServiceRef } from '@backstage/plugin-catalog-node';
 import { createRouter } from './router';
 
 /**
@@ -23,14 +24,16 @@ export const musterPlugin = createBackendPlugin({
         config: coreServices.rootConfig,
         lifecycle: coreServices.rootLifecycle,
         httpAuth: coreServices.httpAuth,
+        catalog: catalogServiceRef,
       },
-      async init({ httpRouter, logger, config, lifecycle, httpAuth }) {
+      async init({ httpRouter, logger, config, lifecycle, httpAuth, catalog }) {
         httpRouter.use(
           await createRouter({
             logger,
             config,
             lifecycle,
             httpAuth,
+            catalog,
           }),
         );
       },

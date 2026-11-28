@@ -1025,6 +1025,7 @@ describe('createRouter', () => {
               name: 'gazelle',
               url: 'https://muster-internal.gazelle.example.test/mcp',
               authProvider: 'mcp-muster',
+              publicUrl: 'https://muster.example.example.test',
             },
           ],
         },
@@ -1038,6 +1039,7 @@ describe('createRouter', () => {
           {
             name: 'gazelle',
             endpoint: 'https://muster-internal.gazelle.example.test/mcp',
+            publicUrl: 'https://muster.example.example.test',
             requiresAuth: true,
             reachable: true,
           },
@@ -1132,6 +1134,31 @@ describe('createRouter', () => {
     expect(filterTools).toHaveBeenCalledWith({ toolset, limit: 1000 }, {});
     expect(response.body.toolset).toEqual(toolset);
   });
+
+  it("forwards an agent's tool list as agentTools for approval reporting", async () => {
+    const agentTools = {
+      tools: ['server:github', { 'tool:x_github_merge': 'Allow' }],
+      default: 'Ask',
+      grants: [{ entry: 'tool:x_github_merge', server: 'github', uid: 'u1' }],
+    };
+    filterTools.mockResolvedValue({ tools: [] });
+    const response = await request(app)
+      .post('/tools/filter?limit=500')
+      .send({ agentTools });
+    expect(response.status).toBe(200);
+    expect(filterTools).toHaveBeenCalledWith({ agentTools, limit: 500 }, {});
+  });
+
+  it.each([{ agentTools: [] }, { agentTools: { tools: 'server:x' } }])(
+    'rejects a malformed agentTools $agentTools',
+    async ({ agentTools }) => {
+      const response = await request(app)
+        .post('/tools/filter')
+        .send({ agentTools });
+      expect(response.status).toBe(400);
+      expect(filterTools).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([{ toolset: null }, { toolset: 'preset:none' }, { toolset: [1] }])(
     'rejects a malformed JSON toolset $toolset',

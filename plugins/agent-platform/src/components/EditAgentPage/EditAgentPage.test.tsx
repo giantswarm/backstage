@@ -120,11 +120,21 @@ jest.mock('../NewAgentToolsPage', () => ({
     const { useNewAgentForm } = jest.requireActual('../NewAgentFormProvider');
     const navigate = useNavigate();
     const { review } = useAgentWizardLinks();
-    const { setConnectors } = useNewAgentForm();
+    const { setConnectors, setToolset, setApprovalDefault, state } =
+      useNewAgentForm();
     return (
       <>
         <button type="button" onClick={() => setConnectors([])}>
           Unpick the organization's connectors
+        </button>
+        <button
+          type="button"
+          onClick={() => setToolset([...state.toolset, 'server:pagerduty'])}
+        >
+          Add PagerDuty
+        </button>
+        <button type="button" onClick={() => setApprovalDefault('Block')}>
+          Default Block
         </button>
         <button type="button" onClick={() => review && navigate(review())}>
           To review
@@ -235,7 +245,7 @@ type Scenario = {
   notConnected?: boolean;
   info?: Partial<AgentManagerInfo>;
   violations?: string[];
-  /** What `/installations` reports for gazelle; true unless said otherwise. */
+  /** What `/installations` reports for example; true unless said otherwise. */
   requiresAuth?: boolean;
   /** What the empty commit dry run fails with; it passes otherwise. */
   commitDryRunError?: string;
@@ -245,19 +255,64 @@ type Scenario = {
   getAgentPending?: boolean;
   /** What muster's `auth://status` reports for agent-manager. */
   agentManagerAuth?: 'auth_required' | 'connected';
+  /**
+   * agent-manager and muster with tool approval: the split update tools, the
+   * agent's list with its settings, and muster's report of it.
+   */
+  approval?: boolean;
+  /** What get_agent answers after the first read (someone saved meanwhile). */
+  agentAfterOpen?: AgentManagerAgent;
+  /** What set_agent_approval does: succeed, or throw this. */
+  approvalError?: string;
+  /** Whether create_agent's schema can be read (`false`: it fails). */
+  schemaReadable?: boolean;
 };
+
+/** The agent with an exception a GitHub admin granted, on an agent-manager with tool approval. */
+const APPROVAL_AGENT: AgentManagerAgent = {
+  ...AGENT,
+  generation: 7,
+  toolset: ['server:github', 'tool:x_github_merge'],
+  toolSettings: ['server:github', { 'tool:x_github_merge': 'Allow' }],
+  approvalSettings: true,
+  grants: [
+    {
+      entry: 'tool:x_github_merge',
+      server: 'github',
+      connectorUid: 'uid-github',
+      grantedBy: 'dana@example.com',
+    },
+  ],
+};
+
+/** muster's report of that list for someone who is no GitHub admin. */
+const APPROVAL_REPORT = [
+  {
+    name: 'x_github_merge',
+    server: 'github',
+    kind: 'tool',
+    connectorAdmin: false,
+    approval: {
+      setting: 'allow',
+      source: 'agent-exception',
+      entry: 'tool:x_github_merge',
+      admin: { setting: 'ask', source: 'tool' },
+    },
+  },
+];
 
 // agent-manager's answers in mode `commit`, as they come over MCP (see
 // `missingReleaseFile`'s test for the first).
 const MISSING_RELEASE_FILE =
-  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/gazelle/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
+  "conflict: conflict: HelmRelease flux-giantswarm/pr-reviewer is not in agent-manager's directory management-clusters/example/extras/agent-manager of giantswarm/giantswarm-management-clusters (no management-clusters/example/extras/agent-manager/pr-reviewer.yaml there): change it in the file that defines it";
 const AUTH_REQUIRED =
   'auth_required: commit mode opens the pull request with your GitHub authorization, and this call carries none: connect agent-manager in muster (core_auth_login server=agent-manager), then call again';
 const TOKEN_REFUSED =
   'auth_required: GitHub refused your token on get contents (status 404): reconnect agent-manager in muster (core_auth_login server=agent-manager); the App must be installed on the repository and your account allowed to push to it';
 
 function makeMusterApi(scenario: Scenario = {}) {
-  const agent = scenario.agent ?? AGENT;
+  const agent = scenario.agent ?? (scenario.approval ? APPROVAL_AGENT : AGENT);
+  let reads = 0;
   const callTool = jest.fn(
     async (name: string, args: Record<string, unknown>) => {
       if (scenario.notConnected) {
@@ -273,7 +328,10 @@ function makeMusterApi(scenario: Scenario = {}) {
           if (scenario.getAgentError) {
             throw new Error(scenario.getAgentError);
           }
-          return agent;
+          reads += 1;
+          return reads > 1 && scenario.agentAfterOpen
+            ? scenario.agentAfterOpen
+            : agent;
         case 'x_agent-manager_get_agent_status':
           return { agent: { generation: 3 } };
         case 'x_agent-manager_validate_agent':
@@ -288,6 +346,21 @@ function makeMusterApi(scenario: Scenario = {}) {
               helmRelease: '',
               values: { agent: { description: args.description } },
             },
+          };
+        case 'x_agent-manager_update_agent_access':
+        case 'x_agent-manager_set_agent_approval':
+          if (
+            name === 'x_agent-manager_set_agent_approval' &&
+            scenario.approvalError
+          ) {
+            throw new Error(scenario.approvalError);
+          }
+          return {
+            agent,
+            before: {},
+            after: {},
+            changed: [],
+            manifests: { ociRepository: '', helmRelease: '', values: {} },
           };
         case 'x_agent-manager_update_agent':
           if (args.mode === 'commit' && args.dryRun) {
@@ -318,16 +391,37 @@ function makeMusterApi(scenario: Scenario = {}) {
   const listServers = jest.fn(async () => ({
     mcpServers: [{ name: 'agent-manager' }],
   }));
-  const filterTools = jest.fn(async () => ({
-    total: 0,
-    filtered_count: 0,
-    truncated: false,
-    tools: [],
-    presets: [],
-  }));
+  const filterTools = jest.fn(
+    async (options: { agentTools?: unknown; toolset?: string[] }) => ({
+      total: 0,
+      filtered_count: 0,
+      truncated: false,
+      tools: scenario.approval && options.agentTools ? APPROVAL_REPORT : [],
+      presets: [],
+      ...(scenario.approval &&
+        (options.agentTools || options.toolset) && {
+          toolset: options.toolset ?? [],
+        }),
+      ...(scenario.approval && options.agentTools
+        ? { agentTools: { entries: [], settings: [] } }
+        : {}),
+    }),
+  );
+  const describeTool = jest.fn(async (name: string) => {
+    if (scenario.schemaReadable === false) {
+      throw new Error('muster answered 503');
+    }
+    if (scenario.approval) {
+      return {
+        name,
+        inputSchema: { properties: { tools: {}, default: {}, connectors: {} } },
+      };
+    }
+    throw new Error(`Tool not found: ${name}`);
+  });
   const listInstallations = jest.fn(async () => ({
     installations: [
-      { name: 'gazelle', requiresAuth: scenario.requiresAuth ?? true },
+      { name: 'example', requiresAuth: scenario.requiresAuth ?? true },
     ],
   }));
   return {
@@ -335,6 +429,7 @@ function makeMusterApi(scenario: Scenario = {}) {
       callTool,
       listServers,
       filterTools,
+      describeTool,
       listInstallations,
       getAuthStatus: jest.fn(async () => ({
         servers: [
@@ -349,7 +444,7 @@ function makeMusterApi(scenario: Scenario = {}) {
   };
 }
 
-const BASE = '/customize/agents/gazelle/kagent/pr-reviewer/edit';
+const BASE = '/customize/agents/example/kagent/pr-reviewer/edit';
 
 function DetailProbe() {
   const location = useLocation();
@@ -436,7 +531,7 @@ function grafanaCloud() {
       },
       spec: { type: 'streamable-http', auth: { type: 'oauth' } },
     } as never,
-    'gazelle',
+    'example',
   );
 }
 
@@ -579,7 +674,7 @@ describe('EditAgentPage', () => {
           "auth_required: server 'agent-manager' requires authentication; sign in to it to use its tools.",
           'server_sign_in_required',
           'agent-manager',
-          'gazelle',
+          'example',
         );
       }
       return scripted(name, args);
@@ -1215,7 +1310,7 @@ describe('EditAgentPage', () => {
     scenario.agentManagerAuth = 'connected';
     await act(() =>
       queryClient.invalidateQueries({
-        queryKey: ['muster', 'auth-status', 'gazelle'],
+        queryKey: ['muster', 'auth-status', 'example'],
       }),
     );
 
@@ -1233,7 +1328,7 @@ describe('EditAgentPage', () => {
     ).toBeInTheDocument();
     expect(
       screen.getByText(
-        /muster on gazelle has no per-user sign-in in this portal/i,
+        /muster on example has no per-user sign-in in this portal/i,
       ),
     ).toBeInTheDocument();
     expect(screen.queryByLabelText(/^Name/)).not.toBeInTheDocument();
@@ -1265,7 +1360,7 @@ describe('EditAgentPage', () => {
             mode: 'commit',
             dryRun: true,
           },
-          'gazelle',
+          'example',
         ],
       ]);
     });
@@ -1277,7 +1372,7 @@ describe('EditAgentPage', () => {
         defaultOptions: { queries: { retry: false } },
       });
       queryClient.setQueryData(
-        musterAgentManagerAgentQueryKey('gazelle', 'kagent', 'pr-reviewer'),
+        musterAgentManagerAgentQueryKey('example', 'kagent', 'pr-reviewer'),
         GITOPS_AGENT,
       );
       const { callTool } = await renderEdit(
@@ -1300,7 +1395,7 @@ describe('EditAgentPage', () => {
       });
       queryClient.setQueryData(
         musterCommitAgentUpdateDryRunQueryKey(
-          'gazelle',
+          'example',
           JSON.stringify({ namespace: 'kagent', name: 'pr-reviewer' }),
         ),
         { skills: undefined },
@@ -1352,7 +1447,7 @@ describe('EditAgentPage', () => {
       // What agent-manager checked is technical: folded away.
       expect(
         screen.getByText(
-          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+          'management-clusters/example/extras/agent-manager/pr-reviewer.yaml',
         ),
       ).not.toBeVisible();
       expect(
@@ -1376,7 +1471,7 @@ describe('EditAgentPage', () => {
       ).toBeVisible();
       expect(
         screen.getByText(
-          'management-clusters/gazelle/extras/agent-manager/pr-reviewer.yaml',
+          'management-clusters/example/extras/agent-manager/pr-reviewer.yaml',
         ),
       ).toBeVisible();
     });
@@ -1496,5 +1591,191 @@ describe('EditAgentPage', () => {
         await screen.findByText('Authorize GitHub for agent-manager'),
       ).toBeInTheDocument();
     });
+  });
+});
+
+describe('EditAgentPage: tool approval', () => {
+  it('says before saving which exceptions a save removes, and saves what the agent is with update_agent alone', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, { approval: true });
+    await changeDescriptionAndReview(user);
+
+    expect(
+      await screen.findByText(
+        'Saving removes 1 exception (x_github_merge). A github admin can grant it again.',
+      ),
+    ).toBeInTheDocument();
+
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await screen.findByText(/agent detail/);
+    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toEqual([
+      [
+        'x_agent-manager_update_agent',
+        {
+          namespace: 'kagent',
+          name: 'pr-reviewer',
+          description: 'Reviews every pull request.',
+          expectedGeneration: 7,
+        },
+        'example',
+      ],
+    ]);
+    expect(callsOf(callTool, 'x_agent-manager_update_agent_access')).toEqual(
+      [],
+    );
+    expect(callsOf(callTool, 'x_agent-manager_set_agent_approval')).toEqual([]);
+  });
+});
+
+describe('EditAgentPage: tool approval saves', () => {
+  /** Changes the description, adds PagerDuty and a default on the Tools step. */
+  async function changeAllAndReview(user: ReturnType<typeof userEvent.setup>) {
+    const description = await screen.findByLabelText(/^What is it for\?/);
+    await user.clear(description);
+    await user.type(description, 'Reviews every pull request.');
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await screen.findByRole('checkbox', { name: 'Skill PR review' });
+    await user.click(screen.getByRole('button', { name: 'Continue' }));
+    await user.click(
+      await screen.findByRole('button', { name: 'Add PagerDuty' }),
+    );
+    await user.click(screen.getByRole('button', { name: 'Default Block' }));
+    await user.click(screen.getByRole('button', { name: 'To review' }));
+    await screen.findByRole('heading', { name: 'Check and save' });
+  }
+
+  it('writes what the agent is, what it reaches, then its settings, in that order', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, { approval: true });
+    await changeAllAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    await screen.findByText(/agent detail/);
+    const writes = callTool.mock.calls
+      .map(([name]) => name)
+      .filter(name =>
+        /update_agent|update_agent_access|set_agent_approval/.test(name),
+      );
+    expect(writes).toEqual([
+      'x_agent-manager_update_agent',
+      'x_agent-manager_update_agent_access',
+      'x_agent-manager_set_agent_approval',
+    ]);
+    expect(
+      callsOf(callTool, 'x_agent-manager_update_agent_access')[0][1],
+    ).toEqual(
+      expect.objectContaining({
+        tools: [
+          'server:github',
+          { 'tool:x_github_merge': 'Allow' },
+          'server:pagerduty',
+        ],
+      }),
+    );
+    expect(
+      callsOf(callTool, 'x_agent-manager_set_agent_approval')[0][1],
+    ).toEqual(expect.objectContaining({ default: 'Block' }));
+  });
+
+  it('says what landed and what did not when the settings are refused after the rest', async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE, {
+      approval: true,
+      approvalError: 'invalid_request: default: refused',
+    });
+    await changeAllAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText(
+        /Saved: every other change, the tool list included\. Not saved \(set_agent_approval refused it\): default Block\./,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/agent detail/)).toBeNull();
+  });
+
+  it('does not say nothing was saved when the chart takes no settings and the tool list already landed', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      approval: true,
+      approvalError:
+        'unsupported: the agent chart 1.4.0 has no tool approval settings (tools, default); use a chart that has them',
+    });
+    await changeAllAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText(
+        /Every other change, the tool list included, was saved/,
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/so nothing was saved/)).toBeNull();
+    expect(
+      callsOf(callTool, 'x_agent-manager_update_agent_access'),
+    ).toHaveLength(1);
+  });
+
+  it('saves nothing over a change someone else saved meanwhile, and offers a reload', async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, {
+      approval: true,
+      agentAfterOpen: {
+        ...APPROVAL_AGENT,
+        generation: 8,
+        toolSettings: ['server:github', { 'tool:x_github_merge': 'Block' }],
+      },
+    });
+    await changeDescriptionAndReview(user);
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText('This agent changed since you opened it'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('button', { name: 'Reload the agent' }),
+    ).toBeInTheDocument();
+    expect(callsOf(callTool, 'x_agent-manager_update_agent')).toEqual([]);
+    expect(save).toBeDisabled();
+  });
+
+  it("shows agent-manager's stale-write refusal as the same conflict", async () => {
+    const user = userEvent.setup();
+    const { callTool } = await renderEdit(BASE, { approval: true });
+    await changeDescriptionAndReview(user);
+    const original = callTool.getMockImplementation()!;
+    callTool.mockImplementation(
+      async (name: string, args: Record<string, unknown>) => {
+        if (name === 'x_agent-manager_update_agent') {
+          throw new Error(
+            'conflict: agent kagent/pr-reviewer changed since it was read (generation 8 now, expectedGeneration 7): read it again with get_agent and apply the change to what it holds now',
+          );
+        }
+        return original(name, args);
+      },
+    );
+    const save = screen.getByRole('button', { name: 'Save changes' });
+    await waitFor(() => expect(save).toBeEnabled());
+    await user.click(save);
+    expect(
+      await screen.findByText('This agent changed since you opened it'),
+    ).toBeInTheDocument();
+  });
+
+  it("saves nothing for an agent with settings while agent-manager's support cannot be told", async () => {
+    const user = userEvent.setup();
+    await renderEdit(BASE, { approval: true, schemaReadable: false });
+    await changeDescriptionAndReview(user);
+    expect(
+      await screen.findByText(
+        "The approval settings can't be checked right now",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Save changes' })).toBeDisabled();
   });
 });
