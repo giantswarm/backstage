@@ -5,8 +5,8 @@ import { useAgentManagerInfo } from '../../../hooks/useAgentManager';
 import { useMusterPluginApi } from '../../../hooks/useMusterPluginApi';
 import { organizationsQuery } from '../../../hooks/organizationsQuery';
 import {
-  mayCreateAgentsIn,
   ORGANIZATIONS_CAPABILITY,
+  organizationTenantChoices,
 } from '../../../lib/organizations';
 import {
   type TenantChoicesUnread,
@@ -90,21 +90,11 @@ export function useTenantChoicesSync(): TenantChoicesSync {
   // are the choices, the others are shown disabled. A `createAgents` that
   // agent-manager does not send is not known, and keeps the organization a
   // choice (`mayCreateAgentsIn`).
-  const memberships = mine?.organizations.flatMap(organization =>
-    organization.permissions.member && organization.namespace
-      ? [{ namespace: organization.namespace, organization }]
-      : [],
-  );
+  const memberships = mine ? organizationTenantChoices(mine) : undefined;
   const choices = byOrganization
-    ? memberships?.flatMap(({ namespace, organization }) =>
-        mayCreateAgentsIn(organization) ? [namespace] : [],
-      )
+    ? memberships?.choices
     : info?.namespaces?.managed;
-  const blocked = byOrganization
-    ? memberships?.flatMap(({ namespace, organization }) =>
-        mayCreateAgentsIn(organization) ? [] : [namespace],
-      )
-    : undefined;
+  const blocked = memberships?.blocked;
   // Both lists in one key, so a change of either is taken.
   const choicesKey =
     choices === undefined

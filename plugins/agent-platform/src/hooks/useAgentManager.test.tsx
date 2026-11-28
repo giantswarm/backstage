@@ -7,14 +7,23 @@ import {
   type MusterApi,
 } from '@giantswarm/backstage-plugin-muster';
 
+import type { ListedOrganization } from '../lib/organizations';
+import { musterOrganizationsQueryKey } from '../lib/queryKeys';
 import { useCreatesAgentsNowhere, useDefaultAgentIds } from './useAgentManager';
 
 /**
- * What agent-manager's `get_info` answers on an installation: the namespaces
- * the person may create in, an answer without `managed`, a failure, or no
- * agent-manager registered in muster there.
+ * What agent-manager answers on an installation: `get_info`'s namespaces the
+ * person may create in, an answer without `managed`, a failure, or no
+ * agent-manager registered in muster there. Or an agent-manager that serves
+ * organizations, with no `managed` namespace, and what its
+ * `list_organizations` answers.
  */
-type InfoAnswer = string[] | 'no managed' | 'fails' | 'absent';
+type InfoAnswer =
+  | string[]
+  | 'no managed'
+  | 'fails'
+  | 'absent'
+  | { organizations: ListedOrganization[] | 'fails' };
 
 function muster(answers: Record<string, InfoAnswer>): MusterApi {
   return {
@@ -28,10 +37,22 @@ function muster(answers: Record<string, InfoAnswer>): MusterApi {
       mcpServers:
         answers[installation] === 'absent' ? [] : [{ name: 'agent-manager' }],
     }),
-    callTool: async (_name: string, _args: unknown, installation: string) => {
+    callTool: async (name: string, _args: unknown, installation: string) => {
       const answer = answers[installation];
       if (answer === 'fails') {
         throw new Error('agent-manager answered 500');
+      }
+      if (typeof answer === 'object' && !Array.isArray(answer)) {
+        if (name !== 'x_agent-manager_list_organizations') {
+          return {
+            namespaces: { default: 'kagent', managed: [] },
+            capabilities: { organizations: true },
+          };
+        }
+        if (answer.organizations === 'fails') {
+          throw new Error('agent-manager answered 500');
+        }
+        return { organizations: answer.organizations };
       }
       return answer === 'no managed'
         ? { namespaces: { default: 'kagent' } }
@@ -40,18 +61,41 @@ function muster(answers: Record<string, InfoAnswer>): MusterApi {
   } as unknown as MusterApi;
 }
 
-function renderWith(answers: Record<string, InfoAnswer>) {
+function renderWith(
+  answers: Record<string, InfoAnswer>,
+  cache?: (queryClient: QueryClient) => void,
+) {
   const queryClient = new QueryClient({
     defaultOptions: { queries: { retry: false } },
   });
+  cache?.(queryClient);
   const wrapper = ({ children }: PropsWithChildren<{}>) => (
     <TestApiProvider apis={[[musterApiRef, muster(answers)]]}>
       <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
     </TestApiProvider>
   );
-  return renderHook(() => useCreatesAgentsNowhere(Object.keys(answers)), {
-    wrapper,
-  });
+  // Every answer the hook gave, the ones before it settled too.
+  const answered: boolean[] = [];
+  const view = renderHook(
+    () => {
+      const result = useCreatesAgentsNowhere(Object.keys(answers));
+      answered.push(result.createsNowhere);
+      return result;
+    },
+    { wrapper },
+  );
+  return { ...view, answered };
+}
+
+/** An organization `list_organizations` names, with its namespace. */
+function organization(
+  permissions: Partial<ListedOrganization['permissions']>,
+): ListedOrganization {
+  return {
+    name: 'acme',
+    namespace: 'agents-acme-x7k2q',
+    permissions: { manage: false, member: true, ...permissions },
+  };
 }
 
 describe('useCreatesAgentsNowhere', () => {
@@ -70,6 +114,57 @@ describe('useCreatesAgentsNowhere', () => {
       expect(result.current.createsNowhere).toBe(createsNowhere);
     },
   );
+
+  it.each<[string, ListedOrganization[] | 'fails', boolean]>([
+    [
+      'belongs to an organization they may create agents in',
+      [organization({ createAgents: true })],
+      false,
+    ],
+    [
+      'belongs to an organization, and agent-manager does not say whether they may create agents there',
+      [organization({})],
+      false,
+    ],
+    ['belongs to no organization', [], true],
+    [
+      'only manages an organization they do not belong to',
+      [organization({ manage: true, member: false, createAgents: true })],
+      true,
+    ],
+    [
+      'belongs only to organizations they may not create agents in',
+      [organization({ createAgents: false })],
+      true,
+    ],
+    ['cannot be read: list_organizations fails', 'fails', false],
+  ])(
+    'where agent-manager serves organizations and names no managed namespace: a person who %s',
+    async (_case, organizations, createsNowhere) => {
+      const { result } = renderWith({ golem: { organizations } });
+
+      await waitFor(() => expect(result.current.isLoading).toBe(false));
+      expect(result.current.createsNowhere).toBe(createsNowhere);
+    },
+  );
+
+  it('reads an organization list from before it rendered again, and decides on the new answer only', async () => {
+    // The directory read the list half a minute ago, before an admin added
+    // the person to acme.
+    const { result, answered } = renderWith(
+      { golem: { organizations: [organization({ createAgents: true })] } },
+      queryClient =>
+        queryClient.setQueryData(
+          musterOrganizationsQueryKey('golem'),
+          { organizations: [] },
+          { updatedAt: Date.now() - 30_000 },
+        ),
+    );
+
+    await waitFor(() => expect(result.current.isLoading).toBe(false));
+    expect(result.current.createsNowhere).toBe(false);
+    expect(answered).not.toContain(true);
+  });
 });
 
 describe('useDefaultAgentIds', () => {

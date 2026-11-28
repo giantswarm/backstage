@@ -275,6 +275,29 @@ export function mayCreateAgentsIn(
 }
 
 /**
+ * Where the New agent form lets the person create agents among the
+ * organizations of `listing`: the namespaces of those they belong to and
+ * may create agents in (`choices`), and of those they belong to and may not
+ * (`blocked`, offered disabled). An organization without its namespace yet
+ * is neither. The first-run card decides by the same answer.
+ */
+export function organizationTenantChoices(listing: OrganizationListing): {
+  choices: string[];
+  blocked: string[];
+} {
+  const choices: string[] = [];
+  const blocked: string[] = [];
+  for (const organization of listing.organizations) {
+    if (organization.permissions.member && organization.namespace) {
+      (mayCreateAgentsIn(organization) ? choices : blocked).push(
+        organization.namespace,
+      );
+    }
+  }
+  return { choices, blocked };
+}
+
+/**
  * Why the New agent form does not let the person pick an organization they
  * belong to, beside it: `agent-platform:user` uses agents, an editor (or an
  * admin) creates them.
