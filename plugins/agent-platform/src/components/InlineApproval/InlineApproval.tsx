@@ -18,6 +18,7 @@ import type {
   ApprovalValue,
   ApprovalView,
 } from '@giantswarm/backstage-plugin-muster';
+import { InputBlock } from './InputBlock';
 
 /** How the chat reads and decides the person's pending approvals. */
 export type InlineApprovals = {
@@ -485,18 +486,10 @@ function RequestDetails({
           )}
         </dd>
       </dl>
-      {view.arguments.length > 0 ? (
-        <>
-          <Text as="p" variant="body-small" weight="bold">
-            Arguments
-          </Text>
-          <Values values={view.arguments} section="arguments" opened={opened} />
-        </>
-      ) : (
-        <Text as="p" variant="body-small" color="secondary">
-          No arguments.
-        </Text>
-      )}
+      <InputBlock
+        canonical={view.canonicalArguments}
+        onOpen={() => opened.open(valueId('input', ''))}
+      />
       {view.changes && view.changes.length > 0 && (
         <>
           <Text as="p" variant="body-small" weight="bold">
@@ -564,7 +557,7 @@ function RequestDetails({
           <blockquote className={classes.says}>{view.agentSays}</blockquote>
           <Text as="p" variant="body-small" color="secondary">
             The agent's own words: they decide nothing. Check the tool and its
-            arguments above.
+            input above.
           </Text>
         </div>
       )}

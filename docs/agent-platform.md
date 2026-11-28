@@ -3215,8 +3215,11 @@ endpoint origin) shows the request inline (`InlineApproval`). The muster backend
 reads it with the person's token (`POST /api/muster/approvals/view`) and the
 card shows everything muster's view and the decision's digest cover (a test
 fails when a field is neither rendered nor deliberately left out): connector,
-tool, arguments in full (long values collapsed behind _Show all N characters_,
-never cut), what changes, the agent's stated reason, why it asks and expiry.
+tool, its arguments as one _Input:_ block (muster's canonical arguments,
+indented, every character kept; a string's `\n` stays visible and breaks the
+line; _Input: none_ without arguments; a long block is collapsed behind _Show
+all N characters_, never cut), what changes, the agent's stated reason, why it
+asks and expiry.
 "About this request" (agent, caller kind, acts for, setting, session, client)
 and the canonical arguments with their SHA-256 stay hidden until _Show details_
 is clicked. A warning names the asking agent unless muster positively names the

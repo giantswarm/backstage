@@ -555,7 +555,7 @@ const VIEW: ApprovalView = {
   },
   callerKind: 'actor JWT',
   installation: 'example',
-  canonicalArguments: '{"incident":"P1⟨U+202E⟩2"}',
+  canonicalArguments: `{"incident":"P1⟨U+202E⟩2","note":"${'x'.repeat(300)}"}`,
   argumentsHash: 'a'.repeat(64),
   expiresAt: new Date(Date.now() + 4.5 * 60_000).toISOString(),
   digest: 'digest-1',
@@ -590,8 +590,8 @@ describe('UrlElicitationPanel, approval decided inline', () => {
   const declineButton = () => screen.getByRole('button', { name: 'Decline' });
 
   /**
-   * What a person does before deciding: opens every collapsed value (the
-   * long note), and the buttons arm a second after the request is in view
+   * What a person does before deciding: opens every collapsed value, and
+   * the buttons arm a second after the request is in view
    * (jsdom has no IntersectionObserver: the card counts as in view).
    */
   const readyToDecide = async (user: ReturnType<typeof userEvent.setup>) => {
@@ -621,15 +621,12 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       'Acknowledge incident acknowledge_incident',
     );
     expect(screen.getByText('Changes data')).toBeInTheDocument();
-    // Full arguments, with muster's marking of invisible characters.
-    expect(screen.getByTestId('approval-argument-incident')).toHaveTextContent(
-      '"P1⟨U+202E⟩2" (string)',
-    );
-    // A long value starts collapsed, says so, and is all there.
-    const note = screen.getByTestId('approval-argument-note');
-    expect(note.querySelector('details')).not.toBeNull();
-    expect(note).toHaveTextContent('Show all 302 characters');
-    expect(note).toHaveTextContent('x'.repeat(300));
+    // The full input as one block, with muster's marking of invisible
+    // characters.
+    const input = screen.getByTestId('approval-input');
+    expect(input).toHaveTextContent('Input:');
+    expect(input).toHaveTextContent('"incident": "P1⟨U+202E⟩2"');
+    expect(input).toHaveTextContent(`"note": "${'x'.repeat(300)}"`);
     // The agent's reason, marked as its own words.
     const says = screen.getByTestId('approval-agent-says');
     expect(says).toHaveTextContent('Agent says');
@@ -810,6 +807,7 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       ...VIEW,
       digest: 'digest-2',
       arguments: [VIEW.arguments[0]],
+      canonicalArguments: '{"incident":"P1⟨U+202E⟩2"}',
     };
     const approvals = inlineApprovals({
       get: jest
@@ -839,9 +837,9 @@ describe('UrlElicitationPanel, approval decided inline', () => {
       ),
     ).toBeInTheDocument();
     expect(onAnswer).not.toHaveBeenCalled();
-    expect(
-      screen.queryByTestId('approval-argument-note'),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('approval-input')).not.toHaveTextContent(
+      '"note"',
+    );
 
     // Shown again, the request is armed anew before it can be approved.
     expect(approveButton()).toBeDisabled();
